@@ -14,6 +14,8 @@ initialize_logging()
 
 
 class Database:
+    MAX_RETRIES = 3
+    RETRY_DELAY = 2
 
     def __init__(self):
         self.name = DB_NAME
@@ -21,13 +23,12 @@ class Database:
         self.cur = None
         self.attempt = 0  # to connect to db
 
-        self._create_db()
-        # if not self._db_exists():
-        #     self._create_db()
+
+        #self._create_db()
+        if not self._db_exists():
+            self._create_db()
 
     def _try_connect(self) -> mysql.connector.connection.MySQLConnectionAbstract | None:
-        max_retries = 3
-        retry_delay = 2
 
         try:
             self.conn = mysql.connector.connect(host=DB_HOST,
@@ -42,13 +43,7 @@ class Database:
         except mysql.connector.errors.Error as e:
             logging.exception(f"Database error: {e.msg}")
             if self._error_retriable(e):
-                if self.attempt < max_retries:
-                    self.attempt += 1
-                    logging.warning(f"Retrying connection (attempt {self.attempt}/{max_retries})...")
-                    time.sleep(retry_delay)
-                    self._try_connect()
-                else:
-                    logging.error(f"Exceeded maximum connect retry attempts. Unable to connect to database.")
+                self._retry_connection()
             else:
                 logging.error(f"Failed to connect to db. {e.errno}: {e.msg}")
 
@@ -69,6 +64,16 @@ class Database:
         non_retriable_err_codes = (2005, 1045, 1049)
         # I consider all other possible exceptions to be retriable by default
         return e.errno not in non_retriable_err_codes
+
+    def _retry_connection(self):
+        """Retries connection attempts to db"""
+        if self.attempt < Database.MAX_RETRIES:
+            self.attempt += 1
+            logging.warning(f"Retrying connection (attempt {self.attempt}/{Database.MAX_RETRIES})...")
+            time.sleep(Database.RETRY_DELAY)
+            self._try_connect()
+        else:
+            logging.error(f"Exceeded maximum connect retry attempts. Unable to connect to database.")
 
     def __enter__(self):
         self.conn = self._try_connect()
@@ -92,7 +97,6 @@ class Database:
         with self:
             self.cur.execute(query)
             res = self.cur.fetchall()
-        print(res)
         return res != []
 
     def _create_db(self):
