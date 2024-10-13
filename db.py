@@ -1,5 +1,6 @@
 import logging
 import time
+from os import path
 
 import mysql.connector
 from utils import load_confidentials_from_env, initialize_logging
@@ -19,7 +20,10 @@ class Database:
         self.conn = None
         self.cur = None
         self.attempt = 0  # to connect to db
-        # self._init_db()
+
+        self._create_db()
+        # if not self._db_exists():
+        #     self._create_db()
 
     def _try_connect(self) -> mysql.connector.connection.MySQLConnectionAbstract | None:
         max_retries = 3
@@ -69,7 +73,7 @@ class Database:
     def __enter__(self):
         self.conn = self._try_connect()
         if self.conn:
-            self.cur = self.conn.cursor()
+            self.cur = self.conn.cursor(buffered=True)
         return self
 
     def __exit__(self, ext_type, exc_value, traceback):
@@ -82,21 +86,52 @@ class Database:
             self.conn.commit()
         self.conn.close()
 
-    def start(self):
+    def _db_exists(self) -> bool:
+        """Shows if a db is already stored on server"""
+        query = f"SHOW DATABASES LIKE '{self.name}'"
         with self:
-            pass
-    # def _init_db(self):
-    #     try:
-    #         if not self._db_exists():
-    #             logging.info(f"Database '{self.name}' not found.")
-    #             self._create_db()
-    #             self._create_tables()
-    #             # self._populate_db()
-    #     except mysql.connector.Error as e:
-    #         logging.exception(f"Error during database initialization: {e}")
-    #         raise
+            self.cur.execute(query)
+            res = self.cur.fetchall()
+        print(res)
+        return res != []
+
+    def _create_db(self):
+        """Creates a db on MySQL server using queries from a MySQL script"""
+        try:
+            self._execute_mysql_script('database/create_db.sql')
+        except FileNotFoundError as e:
+            logging.exception(f"Database error: {repr(e)}")
+
+    def _execute_mysql_script(self, filepath: str) -> None:
+        """
+        Executes queries from a MySQL .sql file.
+        :param filepath: A path to the .sql file with MySQL queries.
+        """
+        if not path.exists(filepath):
+            raise FileNotFoundError('Failed to find MySQL script file')
+
+        queries = Database._extract_mysql_queries(filepath)
+
+        with self:
+            for q in queries:
+                self.cur.execute(q)
+
+    @staticmethod
+    def _extract_mysql_queries(filepath: str) -> list[str]:
+        """
+        Extracts MySQL queries from a .sql file.
+        :param filepath: A path to the .sql file.
+        :return: A list of strings representing MySQL queries.
+        """
+        with open(filepath) as f:
+            raw_text = f.read().strip()
+        queries = [_ for _ in raw_text.split(';') if _]  # if _ deletes '' lines
+        queries = [q.replace('\n', '') for q in queries]
+        return queries
+
+    def start(self):
+        pass
 
 
 if __name__ == '__main__':
     db = Database()
-    db.start()
