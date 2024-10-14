@@ -42,7 +42,7 @@ class Database:
             return self.conn
         except mysql.connector.errors.Error as e:
             logging.exception(f"Database error: {e.msg}")
-            if self._error_retriable(e):
+            if Database._error_retriable(e):
                 self._retry_connection()
             else:
                 logging.error(f"Failed to connect to db. {e.errno}: {e.msg}")
@@ -53,7 +53,8 @@ class Database:
         self.conn = None
         return
 
-    def _error_retriable(self, e: mysql.connector.errors.Error) -> bool:
+    @staticmethod
+    def _error_retriable(e: mysql.connector.errors.Error) -> bool:
         """Defines if a connection led to a error worth being retried"""
         # Considered err_codes:
         # 1045: Access denied for user 'user_name'@'host_name' (using password: YES) (wrong username or password)
