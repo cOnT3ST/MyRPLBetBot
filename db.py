@@ -24,12 +24,7 @@ class Database:
         self.cur = None
         self.conn_attempt = 0
 
-        if not self._db_exists():
-            logging.info(f"Database '{self.name}' not found.")
-            self._create_db()
-            self._create_tables()
-        else:
-            self.exists = True
+        self._ensure_db_exists()
 
     def _try_connect(self) -> mysql.connector.connection.MySQLConnectionAbstract | None:
 
@@ -134,6 +129,15 @@ class Database:
         with self:
             for q in queries:
                 self.cur.execute(q)
+
+    def _ensure_db_exists(self) -> None:
+        """Creates a db exist on MySQL server."""
+        if not self._db_exists():
+            logging.info(f"Database '{self.name}' not found.")
+            self._create_db()
+            self._create_tables()
+        else:
+            self.exists = True
 
     @staticmethod
     def _extract_mysql_queries(filepath: str) -> list[str]:
