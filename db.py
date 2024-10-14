@@ -19,26 +19,29 @@ class Database:
 
     def __init__(self):
         self.name = DB_NAME
+        self.exists = False
         self.conn = None
         self.cur = None
-        self.attempt = 0  # to connect to db
+        self.conn_attempt = 0
 
-
-        #self._create_db()
         if not self._db_exists():
+            logging.info(f"Database '{self.name}' not found.")
             self._create_db()
+            self._create_tables()
+        else:
+            self.exists = True
 
     def _try_connect(self) -> mysql.connector.connection.MySQLConnectionAbstract | None:
 
+        conn_args = {'host': DB_HOST, 'user': DB_LOGIN, 'password': DB_PASSWORD}
+        if self.exists:
+            conn_args['database'] = self.name
+
         try:
-            self.conn = mysql.connector.connect(host=DB_HOST,
-                                                user=DB_LOGIN,
-                                                password=DB_PASSWORD,
-                                                database=self.name,
-                                                connect_timeout=10)
-            if self.attempt != 0:
+            self.conn = mysql.connector.connect(**conn_args, connection_timeout=10)
+            if self.conn_attempt != 0:
                 logging.info(f"Connection retry successful.")
-            self.attempt = 0
+            self.conn_attempt = 0
             return self.conn
         except mysql.connector.errors.Error as e:
             logging.exception(f"Database error: {e.msg}")
@@ -58,19 +61,18 @@ class Database:
         """Defines if a connection led to a error worth being retried"""
         # Considered err_codes:
         # 1045: Access denied for user 'user_name'@'host_name' (using password: YES) (wrong username or password)
-        # 1049: Unknown database 'db_name' (wrong db name)
         # 2003: Can't connect to MySQL server on 'localhost:port' (MySQL server not responding e.g. not running)
         # 2005: Unknown MySQL server host 'host-name' (wrong hostname)
 
-        non_retriable_err_codes = (2005, 1045, 1049)
+        non_retriable_err_codes = (2005, 1045)
         # I consider all other possible exceptions to be retriable by default
         return e.errno not in non_retriable_err_codes
 
     def _retry_connection(self):
         """Retries connection attempts to db"""
-        if self.attempt < Database.MAX_RETRIES:
-            self.attempt += 1
-            logging.warning(f"Retrying connection (attempt {self.attempt}/{Database.MAX_RETRIES})...")
+        if self.conn_attempt < Database.MAX_RETRIES:
+            self.conn_attempt += 1
+            logging.warning(f"Retrying connection (attempt {self.conn_attempt}/{Database.MAX_RETRIES})...")
             time.sleep(Database.RETRY_DELAY)
             self._try_connect()
         else:
@@ -101,9 +103,21 @@ class Database:
         return res != []
 
     def _create_db(self):
-        """Creates a db on MySQL server using queries from a MySQL script"""
+        logging.info(f"Attempt to create db...")
         try:
-            self._execute_mysql_script('database/create_db.sql')
+            with self:
+                self.cur.execute(f"CREATE DATABASE {self.name}")
+                self.exists = True
+                logging.info(f"Database '{self.name}' created.")
+        except Exception as e:
+            logging.exception(f"An unexpected error occurred while creating db: {repr(e)}")
+
+    def _create_tables(self):
+        """Creates tables in the db using queries from a MySQL script."""
+        logging.info("Attempt to create tables...")
+        try:
+            self._execute_mysql_script('database/create_tables.sql')
+            logging.info(f"Tables created.")
         except FileNotFoundError as e:
             logging.exception(f"Database error: {repr(e)}")
 
@@ -133,9 +147,6 @@ class Database:
         queries = [_ for _ in raw_text.split(';') if _]  # if _ deletes '' lines
         queries = [q.replace('\n', '') for q in queries]
         return queries
-
-    def start(self):
-        pass
 
 
 if __name__ == '__main__':
