@@ -4,6 +4,7 @@ from os import path
 
 import mysql.connector
 from utils import load_confidentials_from_env, initialize_logging
+from users import User
 
 DB_HOST = str(load_confidentials_from_env("MYSQL_DB_HOST"))
 DB_LOGIN = str(load_confidentials_from_env("MYSQL_DB_USERNAME"))
@@ -53,7 +54,7 @@ class Database:
 
     @staticmethod
     def _error_retriable(e: mysql.connector.errors.Error) -> bool:
-        """Defines if a connection led to a error worth being retried"""
+        """Defines if a connection led to a error worth being retried."""
         # Considered err_codes:
         # 1045: Access denied for user 'user_name'@'host_name' (using password: YES) (wrong username or password)
         # 2003: Can't connect to MySQL server on 'localhost:port' (MySQL server not responding e.g. not running)
@@ -63,7 +64,7 @@ class Database:
         # I consider all other possible exceptions to be retriable by default
         return e.errno not in non_retriable_err_codes
 
-    def _retry_connection(self):
+    def _retry_connection(self) -> None:
         """Retries connection attempts to db"""
         if self.conn_attempt < Database.MAX_RETRIES:
             self.conn_attempt += 1
@@ -152,6 +153,34 @@ class Database:
         queries = [q.replace('\n', '') for q in queries]
         return queries
 
+    def _populate_tables(self) -> None:
+        admin = User(telegram_id=int(load_confidentials_from_env('ADMIN_ID')),
+                     is_auth=True,
+                     is_admin=True
+                     )
+        test_user = User(telegram_id=int(load_confidentials_from_env('TEST_ACCOUNT_ID')),
+                         first_name='test',
+                         last_name='account',
+                         is_auth=True,
+                         )
+
+        admin_data, test_user_data = admin.to_dict(), test_user.to_dict()
+        admin_q = Database._write_insert_query('users', admin_data)
+        test_q = Database._write_insert_query('users', test_user_data)
+
+        with self:
+            self.cur.execute(admin_q, tuple(admin_data.values()))
+            self.cur.execute(test_q, tuple(test_user_data.values()))
+
+    @staticmethod
+    def _write_insert_query(table: str, data: dict) -> str:
+        cols = tuple(data.keys())
+        pholders = ', '.join(["%s" for i in cols])
+        q = f"INSERT INTO {table} ({', '.join(cols)}) VALUES ({pholders});"
+        return q
+
 
 if __name__ == '__main__':
     db = Database()
+    db._populate_tables()
+
