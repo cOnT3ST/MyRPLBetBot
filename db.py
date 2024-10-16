@@ -60,9 +60,9 @@ class Database:
         # 2003: Can't connect to MySQL server on 'localhost:port' (MySQL server not responding e.g. not running)
         # 2005: Unknown MySQL server host 'host-name' (wrong hostname)
 
-        non_retriable_err_codes = (2005, 1045)
+        retriable_err_codes = (2003,)
         # I consider all other possible exceptions to be retriable by default
-        return e.errno not in non_retriable_err_codes
+        return e.errno in retriable_err_codes
 
     def _retry_connection(self) -> None:
         """Retries connection attempts to db"""
