@@ -10,8 +10,9 @@ ADMIN_ID: str = utils.load_confidentials_from_env("ADMIN_ID")
 
 class BetBot(telebot.TeleBot):
 
-    def __init__(self):
+    def __init__(self, db):
         super().__init__(token=TELEGRAM_TOKEN, parse_mode='HTML')
+        self.db = db
         self.register_message_handler(callback=self.handle_message, func=self.message_filter)
         self.start()
 
@@ -49,18 +50,19 @@ class BetBot(telebot.TeleBot):
         if not self.user_authorized(message.from_user.id):
             self.reply_to(message=message,
                           text=f"<b>Доступ запрещен!</b>\n\n"
-                               f"К сожалению, это закрытое соревнование, и Вы не являетесь его участником. 😢"
-                          )
+                               f"К сожалению, это закрытое соревнование, и Вы не являетесь его участником. 😢")
             return False
         if not message_is_text:
             self.reply_to(message=message, text=f"<b>Ой!</b>\nЭтот бот понимает только текстовые сообщения.")
             return False
         return True
 
-    @staticmethod
-    def user_authorized(user_id: int) -> bool:
-        return user_id == int(ADMIN_ID)
+    def user_authorized(self, user_id: int) -> bool:
+        return self.db.get_user(user_id) is not None
 
 
 if __name__ == "__main__":
-    bot = BetBot()
+    from db import Database
+
+    db = Database()
+    bot = BetBot(db)

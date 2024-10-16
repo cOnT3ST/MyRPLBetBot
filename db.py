@@ -182,18 +182,31 @@ class Database:
             self.cur.execute(admin_q, tuple(admin_data.values()))
             self.cur.execute(test_q, tuple(test_user_data.values()))
 
-    def _get_users(self) -> list[dict] | None:
+    def _get_users(self) -> list[User] | None:
         query = 'SELECT * FROM users'
         with self:
             self.cur.execute(query)
             res = self.cur.fetchall()
+        if res:
+            res = [User.from_dict(d) for d in res]
         return res
 
-    def _get_admin(self) -> dict | None:
+    def get_user(self, telegram_id: int) -> User | None:
+        query = f'SELECT * FROM users WHERE telegram_id = {telegram_id}'
+        with self:
+            self.cur.execute(query)
+            res = self.cur.fetchone()
+        if res:
+            res = User.from_dict(res)
+        return res
+
+    def _get_admin(self) -> User | None:
         query = 'SELECT * FROM users WHERE is_admin = True'
         with self:
             self.cur.execute(query)
             res = self.cur.fetchone()
+        if res:
+            res = User.from_dict(res)
         return res
 
 
