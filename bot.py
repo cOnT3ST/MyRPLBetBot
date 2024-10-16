@@ -13,6 +13,7 @@ class BetBot(telebot.TeleBot):
     def __init__(self):
         super().__init__(token=TELEGRAM_TOKEN, parse_mode='HTML')
         self.register_message_handler(callback=self.handle_message, func=self.message_filter)
+        self.start()
 
     def start(self) -> None:
         self.notify_admin("<b>БОТ ЗАПУЩЕН</b>")
@@ -63,4 +64,3 @@ class BetBot(telebot.TeleBot):
 
 if __name__ == "__main__":
     bot = BetBot()
-    bot.start()

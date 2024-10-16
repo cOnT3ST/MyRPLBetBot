@@ -77,7 +77,7 @@ class Database:
     def __enter__(self):
         self.conn = self._try_connect()
         if self.conn:
-            self.cur = self.conn.cursor(buffered=True)
+            self.cur = self.conn.cursor(buffered=True, dictionary=True)
         return self
 
     def __exit__(self, ext_type, exc_value, traceback):
@@ -137,6 +137,7 @@ class Database:
             logging.info(f"Database '{self.name}' not found.")
             self._create_db()
             self._create_tables()
+            self._populate_tables()
         else:
             self.exists = True
 
@@ -154,23 +155,7 @@ class Database:
         return queries
 
     def _populate_tables(self) -> None:
-        admin = User(telegram_id=int(load_confidentials_from_env('ADMIN_ID')),
-                     is_auth=True,
-                     is_admin=True
-                     )
-        test_user = User(telegram_id=int(load_confidentials_from_env('TEST_ACCOUNT_ID')),
-                         first_name='test',
-                         last_name='account',
-                         is_auth=True,
-                         )
-
-        admin_data, test_user_data = admin.to_dict(), test_user.to_dict()
-        admin_q = Database._write_insert_query('users', admin_data)
-        test_q = Database._write_insert_query('users', test_user_data)
-
-        with self:
-            self.cur.execute(admin_q, tuple(admin_data.values()))
-            self.cur.execute(test_q, tuple(test_user_data.values()))
+        self._populate_users()
 
     @staticmethod
     def _write_insert_query(table: str, data: dict) -> str:
@@ -179,8 +164,38 @@ class Database:
         q = f"INSERT INTO {table} ({', '.join(cols)}) VALUES ({pholders});"
         return q
 
+    def _populate_users(self):
+        admin_data = {
+            'telegram_id': int(load_confidentials_from_env('ADMIN_ID')),
+            'is_admin': True
+        }
+        test_user_data = {
+            'telegram_id': int(load_confidentials_from_env('TEST_ACCOUNT_ID')),
+            'first_name': 'test',
+            'last_name': 'account'
+        }
+
+        admin_q = Database._write_insert_query('users', admin_data)
+        test_q = Database._write_insert_query('users', test_user_data)
+
+        with self:
+            self.cur.execute(admin_q, tuple(admin_data.values()))
+            self.cur.execute(test_q, tuple(test_user_data.values()))
+
+    def _get_users(self) -> list[dict] | None:
+        query = 'SELECT * FROM users'
+        with self:
+            self.cur.execute(query)
+            res = self.cur.fetchall()
+        return res
+
+    def _get_admin(self) -> dict | None:
+        query = 'SELECT * FROM users WHERE is_admin = True'
+        with self:
+            self.cur.execute(query)
+            res = self.cur.fetchone()
+        return res
+
 
 if __name__ == '__main__':
     db = Database()
-    db._populate_tables()
-
