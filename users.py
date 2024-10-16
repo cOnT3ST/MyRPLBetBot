@@ -5,11 +5,10 @@ from datetime import datetime
 @dataclass
 class User:
     telegram_id: int
+    created_at: datetime  # default value is set in a create table query
     id: int = None
     chat_id: int = None
-    is_auth: bool = False
     is_admin: bool = False
-    created_at: datetime = None
     first_name: str = None
     last_name: str = None
     last_updated: datetime = None
