@@ -209,6 +209,40 @@ class Database:
             res = User.from_dict(res)
         return res
 
+    def register_user(self, telegram_id: int, chat_id: int) -> None:
+        query = f"UPDATE users SET chat_id = {chat_id} WHERE telegram_id = {telegram_id}"
+        user = self.get_user(telegram_id)
+        try:
+            with self:
+                self.cur.execute(query)
+                logging.info(f"User {telegram_id=} ({user.first_name} {user.last_name}) registered")
+        except Exception as e:
+            logging.exception(f"Registration error: {repr(e)}")
+
+    def check_prev_usage(self, telegram_id: int) -> bool:
+        user = self.get_user(telegram_id)
+        return bool(user.used_bot)
+
+    def set_used_bot(self, telegram_id: int) -> None:
+        query = f"UPDATE users SET used_bot = 1 WHERE telegram_id = {telegram_id}"
+        with self:
+            self.cur.execute(query)
+
+    def mark_bot_block(self, telegram_id: int) -> None:
+        query = f"UPDATE users SET blocked_bot = 1 WHERE telegram_id = {telegram_id}"
+        with self:
+            self.cur.execute(query)
+
+    def mark_bot_unblock(self, telegram_id: int) -> None:
+        query = f"UPDATE users SET blocked_bot = 0 WHERE telegram_id = {telegram_id}"
+        with self:
+            self.cur.execute(query)
+
+    def check_bot_block(self, telegram_id: int) -> bool:
+        user = self.get_user(telegram_id)
+        return bool(user.blocked_bot)
+
+
 
 if __name__ == '__main__':
     db = Database()
