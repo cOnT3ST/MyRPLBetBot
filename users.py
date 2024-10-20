@@ -19,11 +19,14 @@ class User:
         fields_dict = {f.name: self.__getattribute__(f.name) for f in fields(self)}
         # as MySQL stores bool values as 0s and 1s we manually transform bool fields
         bool_fields = self._get_bool_fields()
-        return {k: (v if k not in bool_fields else bool(v)) for k, v in fields_dict.items()}
+        return {k: (v if k not in bool_fields else int(v)) for k, v in fields_dict.items()}
 
     @classmethod
     def from_dict(cls, d: dict) -> 'User':
-        return User(**d)
+        bool_fields = cls._get_bool_fields()
+        # as MySQL stores bool values as 0s and 1s we manually transform bool fields
+        bool_dict = {k: (v if k not in bool_fields else bool(v)) for k, v in d.items()}
+        return User(**bool_dict)
 
     @classmethod
     def _get_bool_fields(cls) -> tuple[str]:

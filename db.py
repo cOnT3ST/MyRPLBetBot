@@ -54,14 +54,14 @@ class Database:
 
     @staticmethod
     def _error_retriable(e: mysql.connector.errors.Error) -> bool:
-        """Defines if a connection led to a error worth being retried."""
+        """Defines if a connection led to an error worth being retried."""
         # Considered err_codes:
         # 1045: Access denied for user 'user_name'@'host_name' (using password: YES) (wrong username or password)
-        # 2003: Can't connect to MySQL server on 'localhost:port' (MySQL server not responding e.g. not running)
+        # 2003: Can't connect to MySQL server on 'localhost:port' (MySQL server not responding e.g., not running)
         # 2005: Unknown MySQL server host 'host-name' (wrong hostname)
 
         retriable_err_codes = (2003,)
-        # I consider all other possible exceptions to be retriable by default
+        # I consider all other possible exceptions to be retriable by default.
         return e.errno in retriable_err_codes
 
     def _retry_connection(self) -> None:
@@ -160,7 +160,7 @@ class Database:
     @staticmethod
     def _write_insert_query(table: str, data: dict) -> str:
         cols = tuple(data.keys())
-        pholders = ', '.join(["%s" for i in cols])
+        pholders = ', '.join(["%s" for _ in cols])
         q = f"INSERT INTO {table} ({', '.join(cols)}) VALUES ({pholders});"
         return q
 
@@ -183,7 +183,7 @@ class Database:
             self.cur.execute(test_q, tuple(test_user_data.values()))
 
     def _get_users(self) -> list[User] | None:
-        query = 'SELECT * FROM users'
+        query = 'SELECT * FROM users WHERE used_bot = 1'
         with self:
             self.cur.execute(query)
             res = self.cur.fetchall()
@@ -241,7 +241,6 @@ class Database:
     def check_bot_block(self, telegram_id: int) -> bool:
         user = self.get_user(telegram_id)
         return bool(user.blocked_bot)
-
 
 
 if __name__ == '__main__':
