@@ -125,8 +125,8 @@ class BetBot(telebot.TeleBot):
     def _user_allowed(self, telegram_id: int) -> bool:
         """
         Determines if the user is allowed to participate in the competition.
-        Checks if the user's telegram ID is stored in the db.
-        :param telegram_id: User's telegram id.
+        Checks if the user’s telegram ID is stored in the db.
+        :param telegram_id: User's telegram ID.
         :return: True if the user is allowed, False otherwise.
         """
         return self.db.get_user(telegram_id) is not None
@@ -135,19 +135,19 @@ class BetBot(telebot.TeleBot):
         """
         Ensures that the user is allowed to participate in the competition.
         Checks if a user is stored in the db.
-        :param telegram_id: User's telegram id.
+        :param telegram_id: User's telegram ID.
         """
         return self.db.check_bot_block(telegram_id)
 
     def _mark_bot_blocked(self, telegram_id: int) -> None:
         """Marks the user as having blocked the bot in the db.
-        :param telegram_id: User's telegram id.
+        :param telegram_id: User's telegram ID.
         """
         self.db.mark_bot_block(telegram_id)
 
     def _mark_bot_unblocked(self, telegram_id: int) -> None:
         """Marks the user as having unblocked the bot in the db.
-        :param telegram_id: User's telegram id.
+        :param telegram_id: User's telegram ID.
         """
         self.db.mark_bot_unblock(telegram_id)
 
@@ -179,8 +179,8 @@ class BetBot(telebot.TeleBot):
         message_id = query.json['message']['message_id']
         self.edit_message_reply_markup(chat_id=chat_id, message_id=message_id)
 
-        # this method must be called to end a query that caused this callback. Otherwise the inline button will be in
-        # progress forever
+        # This method must be called to end a query that caused this callback. Otherwise, the inline button will be in
+        # progress forever.
         self.answer_callback_query(query.id)
 
         matches = ('Зенит - Спартак', 'Краснодар - Динамо', 'Локомотив - Крылья Советов')
@@ -196,7 +196,7 @@ class BetBot(telebot.TeleBot):
         :param matches: A list of this round's matches for user to place bets on.
         :return: Newly created BetInputSession instance.
         """
-        session = BetInputSession(user_id=telegram_id, matches=matches)
+        session = BetInputSession(telegram_id=telegram_id, matches=matches)
         self._add_bet_input_session(telegram_id, session)
         return session
 
@@ -219,7 +219,8 @@ class BetBot(telebot.TeleBot):
                 self._finish_bet_session(user_id)
                 return
 
-        text = f"<b>{session.match}</b>\n\nВаша ставка?"
+        match_num = session.matches.index(session.match) + 1
+        text = f"Матч {match_num}:\n<b>{session.match}</b>\n\nВаша ставка?"
         self.send_message(user_id, text=text)
 
     def _finish_bet_session(self, telegram_id: int) -> None:
@@ -245,10 +246,10 @@ class BetBot(telebot.TeleBot):
         user_id = message.from_user.id
         session = self._active_sessions[user_id]
 
-        input_valid = BetBot._correct_bet(message.text)
+        input_valid = BetBot._correct_bet(message)
         if not input_valid:
-            text = f"<b>Ой!</b>\nНеправильный формат ставки\n\nСтавки необходимо присылать в формате 'число-число' " \
-                   f"или 'число:число'. Например, 2-1 или 0:0. Попробуйте еще раз!"
+            text = f"<b>Ой!</b>\nНеправильный формат ставки\n\nСтавка должна быть прислана в виде текстового сообщения " \
+                   f"в формате 'число-число или 'число:число'. Например, 2-1 или 0:0. Попробуйте еще раз!"
             self.reply_to(message, text)
             self._request_bet(session=session, repeated_bet=True)
             return
@@ -258,16 +259,20 @@ class BetBot(telebot.TeleBot):
         self._request_bet(session)
 
     @staticmethod
-    def _correct_bet(bet_text: str) -> bool:
+    def _correct_bet(message: telebot.types.Message) -> bool:
         """
-        Parses text that user sent as a bet and determines if it follows the right syntax:
-        bet must be represented by two integers devided by a single allowed delimiter.
+        Analyzes the text that user sent as a bet and determines if it is a text message and follows the right syntax:
+        bet must be represented by two integers divided by a single allowed delimiter.
         Examples: 2-1, 0:0.
-        :param bet_text: Text representing user's bet.
-        :return: True if text is valid, False otherwise.
+        :param message: Message instance sent by the user.
+        :return: True if message is valid, False otherwise.
         """
+        if not message.content_type == 'text':
+            return False
+
         delimiters = ['-', ':']
         allowed = string.digits + ''.join(delimiters)
+        bet_text = message.text
         bet_text = bet_text.strip()
         bet_text = bet_text.replace(' ', '')
 
@@ -290,7 +295,7 @@ class BetBot(telebot.TeleBot):
     def _add_bet_input_session(self, telegram_id: int, session: BetInputSession) -> None:
         """
         Adds the new BetInputSession to the list of self._active_sessions.
-        :param telegram_id: User's telegram id whose session is to be added.
+        :param telegram_id: User's telegram ID whose session is to be added.
         :param session: New BetInputSession instance.
         """
         if not self._active_sessions:
@@ -301,14 +306,14 @@ class BetBot(telebot.TeleBot):
     def _delete_bet_input_session(self, telegram_id: int) -> None:
         """
         Deletes BetInputSession from the list of self._active_sessions.
-        :param telegram_id: User's telegram id whose session is to be deleted.
+        :param telegram_id: User's telegram ID whose session is to be deleted.
         """
         self._active_sessions.pop(telegram_id)
 
     def _bet_session_active(self, telegram_id: int) -> bool:
         """
         Determines if a user's bot is currently in a bet input session.
-        :param telegram_id: User's telegram id whose session is to be checked.
+        :param telegram_id: User's telegram ID whose session is to be checked.
         :return: True if bot session is on, False otherwise.
         """
         if not self._active_sessions:
