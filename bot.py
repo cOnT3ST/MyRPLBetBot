@@ -42,15 +42,12 @@ class BetBot(telebot.TeleBot):
 
     def send_message(self, *args, **kwargs):
         chat_id = kwargs.get('chat_id', args[0] if args else None)
-        user_blocked_bot = self._check_bot_block(chat_id)
         try:
             super().send_message(*args, **kwargs)
-            if user_blocked_bot:
-                self._mark_bot_unblocked(chat_id)
+            self._mark_bot_unblocked(chat_id)
         except telebot.apihelper.ApiTelegramException as e:
             if e.error_code == 403:  # 'error_code': 403, 'description': 'Forbidden: bot was blocked by the user'
-                if not user_blocked_bot:
-                    self._mark_bot_blocked(chat_id)
+                self._mark_bot_blocked(chat_id)
                 logging.exception(repr(e))
                 return
             else:
@@ -130,14 +127,6 @@ class BetBot(telebot.TeleBot):
         :return: True if the user is allowed, False otherwise.
         """
         return self.db.get_user(telegram_id) is not None
-
-    def _check_bot_block(self, telegram_id: int) -> bool:
-        """
-        Ensures that the user is allowed to participate in the competition.
-        Checks if a user is stored in the db.
-        :param telegram_id: User's telegram ID.
-        """
-        return self.db.check_bot_block(telegram_id)
 
     def _mark_bot_blocked(self, telegram_id: int) -> None:
         """Marks the user as having blocked the bot in the db.
