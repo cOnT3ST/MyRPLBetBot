@@ -21,17 +21,17 @@ class BetBot(telebot.TeleBot):
         self.db = db
         self.users: list[User] | None = None
         self._active_sessions: dict[int: BetInputSession] | None = None
+        self._commands: list[str, ...] = ['/start']
 
-        self.register_message_handler(commands=['start'], callback=self._handle_start, func=self._message_filter)
-        self.register_message_handler(callback=self._handle_bet_input, func=self._bet_filter)
-        self.register_message_handler(callback=self._handle_message, func=self._message_filter)
+        self.register_message_handler(callback=self._handle_bet, func=self._filter_bet)
+        self.register_message_handler(callback=self._handle_message, func=self._filter_message)
 
         self._get_registered_users()
         self.start()
 
     def start(self) -> None:
         self.notify_admin("<b>БОТ ЗАПУЩЕН</b>")
-        self._request_bets()
+        # self._request_bets()
         try:
             self.polling(none_stop=True)
         except Exception as e:
@@ -62,36 +62,54 @@ class BetBot(telebot.TeleBot):
             logging.exception(repr(e))
 
     def _handle_message(self, message: telebot.types.Message) -> None:
-        """A handler func for all text messages received by auth users."""
+        text = message.text
+        if text.startswith('/'):
+            if text in self._commands:
+                self._handle_command(message)
+                return
+            else:
+                self.reply_to(message=message, text="<b>Ой!</b>\n\nВы ввели неподдерживаемую команду.\nДля вывода "
+                                                    "доступных команд введите /help.")
+                return
+        self._handle_text(message)
+
+    def _handle_text(self, message) -> None:
         text = f"A message has been received\n" \
                f"Sender: {message.from_user.first_name} {message.from_user.last_name}\n" \
-               f"Text: {message.text}\n" \
-               f"Message type: {message.content_type}"
+               f"Message type: {message.content_type}\n" \
+               f"Text: {message.text}\n"
         self.reply_to(message, text)
 
-    def _message_filter(self, message: telebot.types.Message) -> bool:
-        """
-        Filter for all messages coming from users. Declines unauthorized users and all non-text messages.
-        Sends replies describing the situation to message senders.
+    def _handle_command(self, message) -> None:
+        command = message.text
+        callbacks = {'/start': self._handle_start}
+        callbacks[command](message)
 
-        :param message: The incoming message object from a user.
-        :return: True if a message is allowed to be processed by the bot, False otherwise.
-        """
+    def _filter_message(self, message: telebot.types.Message) -> bool:
+        filters = (
+            self._filter_user,
+            self._filter_text
+        )
+        for f in filters:
+            passed, reply_text = f(message)
+            if not passed:
+                self.reply_to(message=message, text=reply_text)
+                return False
+        return True
 
-        message_is_text = message.content_type == 'text'
+    def _filter_user(self, message: telebot.types.Message) -> (bool, str):
+        user_allowed = self._user_allowed(message.from_user.id)
+        if not user_allowed:
+            return False, f"<b>Доступ запрещен!</b>\n\n" \
+                          f"К сожалению, это закрытое соревнование, и Вы не являетесь его участником. 😢"
+        return True, None
 
-        if not self._user_allowed(message.from_user.id):
-            self.reply_to(message=message,
-                          text=f"<b>Доступ запрещен!</b>\n\n"
-                               f"К сожалению, это закрытое соревнование, и Вы не являетесь его участником. 😢")
-            return False
-        elif not message_is_text:
-            self.reply_to(message=message, text=f"<b>Ой!</b>\nЭтот бот понимает только текстовые сообщения.")
-            return False
-        else:
-            return True
+    def _filter_text(self, message: telebot.types.Message) -> (bool, str):
+        if not message.content_type == 'text':
+            return False, f"<b>Ой!</b>\nЭтот бот понимает только текстовые сообщения."
+        return True, None
 
-    def _bet_filter(self, message: telebot.types.Message) -> bool:
+    def _filter_bet(self, message: telebot.types.Message) -> bool:
         """
         This filter defines if a message is a bet: i.e., was received during active bet session.
         :param message: The incoming message object from a user.
@@ -222,7 +240,7 @@ class BetBot(telebot.TeleBot):
         text = f'<b>Готово!</b>\n\nВы успешно поставили на все матчи тура!'
         self.send_message(telegram_id, text)
 
-    def _handle_bet_input(self, message: telebot.types.Message) -> None:
+    def _handle_bet(self, message: telebot.types.Message) -> None:
         """
         A handler func for messages received by the user during a BetInputSession.
 
