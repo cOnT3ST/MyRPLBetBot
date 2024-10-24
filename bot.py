@@ -62,6 +62,11 @@ class BetBot(telebot.TeleBot):
             logging.exception(repr(e))
 
     def _handle_message(self, message: telebot.types.Message) -> None:
+        """
+        Handles messages, which passed message filter by passing them to either a command or text handler.
+
+        :param message: The incoming message object from a user.
+        """
         text = message.text
         if text.startswith('/'):
             if text in self._commands:
@@ -74,6 +79,7 @@ class BetBot(telebot.TeleBot):
         self._handle_text(message)
 
     def _handle_text(self, message) -> None:
+        """A handler for text messages."""
         text = f"A message has been received\n" \
                f"Sender: {message.from_user.first_name} {message.from_user.last_name}\n" \
                f"Message type: {message.content_type}\n" \
@@ -81,11 +87,21 @@ class BetBot(telebot.TeleBot):
         self.reply_to(message, text)
 
     def _handle_command(self, message) -> None:
+        """A handler for supported commands."""
         command = message.text
         callbacks = {'/start': self._handle_start}
         callbacks[command](message)
 
     def _filter_message(self, message: telebot.types.Message) -> bool:
+        """
+        Main message filter. If message not valid sends a message to the user.
+        Filters out:
+        - all the messages sent from unallowed users;
+        - all non-text messages.
+
+        :param message: The incoming message object from a user.
+        :return: True if message is allowed to be handled, False otherwise.
+        """
         filters = (
             self._filter_user,
             BetBot._filter_text
@@ -98,6 +114,12 @@ class BetBot(telebot.TeleBot):
         return True
 
     def _filter_user(self, message: telebot.types.Message) -> (bool, str):
+        """
+        Determines if the message was sent from the allowed user. If not, sends an explanatory message to the sender.
+
+        :param message: The incoming message object from a user.
+        :return: True if message is from allowed user, False otherwise.
+        """
         user_allowed = self._user_allowed(message.from_user.id)
         if not user_allowed:
             return False, f"<b>Доступ запрещен!</b>\n\n" \
@@ -106,6 +128,12 @@ class BetBot(telebot.TeleBot):
 
     @staticmethod
     def _filter_text(message: telebot.types.Message) -> (bool, str):
+        """
+        Determines if the message is a text. If not, sends an explanatory message to the sender.
+
+        :param message: The incoming message object from a user.
+        :return: True if message is a text, False otherwise.
+        """
         if not message.content_type == 'text':
             return False, f"<b>Ой!</b>\nЭтот бот понимает только текстовые сообщения."
         return True, None
