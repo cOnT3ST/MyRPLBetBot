@@ -88,7 +88,7 @@ class BetBot(telebot.TeleBot):
     def _filter_message(self, message: telebot.types.Message) -> bool:
         filters = (
             self._filter_user,
-            self._filter_text
+            BetBot._filter_text
         )
         for f in filters:
             passed, reply_text = f(message)
@@ -104,7 +104,8 @@ class BetBot(telebot.TeleBot):
                           f"К сожалению, это закрытое соревнование, и Вы не являетесь его участником. 😢"
         return True, None
 
-    def _filter_text(self, message: telebot.types.Message) -> (bool, str):
+    @staticmethod
+    def _filter_text(message: telebot.types.Message) -> (bool, str):
         if not message.content_type == 'text':
             return False, f"<b>Ой!</b>\nЭтот бот понимает только текстовые сообщения."
         return True, None
