@@ -21,7 +21,11 @@ class BetBot(telebot.TeleBot):
         self.db = db
         self.users: list[User] | None = None
         self._active_sessions: dict[int: BetInputSession] | None = None
-        self._commands: list[str, ...] = ['/start']
+
+        self._commands = {
+            '/start': {'callback': self._handle_start, 'desc': 'This command starts the bot!'},
+            '/help': {'callback': self._handle_help, 'desc': 'This command shows all supported commands!'}
+        }
 
         self.register_message_handler(callback=self._handle_bet, func=self._filter_bet)
         self.register_message_handler(callback=self._handle_message, func=self._filter_message)
@@ -31,9 +35,9 @@ class BetBot(telebot.TeleBot):
 
     def start(self) -> None:
         self.notify_admin("<b>БОТ ЗАПУЩЕН</b>")
-        # self._request_bets()
+        #self._request_bets()
         try:
-            self.polling(none_stop=True)
+            self.infinity_polling()
         except Exception as e:
             logging.exception(repr(e))
             self.notify_admin(f"<b>БОТ ОСТАНОВЛЕН</b>\n\nНеожиданная ошибка: {e}")
@@ -89,8 +93,8 @@ class BetBot(telebot.TeleBot):
     def _handle_command(self, message) -> None:
         """A handler for supported commands."""
         command = message.text
-        callbacks = {'/start': self._handle_start}
-        callbacks[command](message)
+        callback = self._commands[command]['callback']
+        callback(message)
 
     def _filter_message(self, message: telebot.types.Message) -> bool:
         """
@@ -160,11 +164,18 @@ class BetBot(telebot.TeleBot):
         if not new_user:
             self.db.register_user(telegram_id)
 
-    def _handle_start(self, message) -> None:
+    def _handle_start(self, message: telebot.types.Message) -> None:
         """A handler func for the '/start' command."""
         self._ensure_user_registration(message)
         self._get_registered_users()
         self.reply_to(message, 'You used /start command!')
+
+    def _handle_help(self, message: telebot.types.Message) -> None:
+        """A handler func for the '/help' command."""
+        comms_n_descs = [f"{c} - {d['desc']}" for c, d in self._commands.items()]
+        comms_n_descs = f'\n\n'.join(comms_n_descs)
+        self.reply_to(message, f"Список поддерживаемых ботом команд:\n\n"
+                               f"{comms_n_descs}")
 
     def _user_allowed(self, telegram_id: int) -> bool:
         """
