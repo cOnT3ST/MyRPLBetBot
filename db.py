@@ -3,15 +3,15 @@ import time
 from os import path
 
 import mysql.connector
-from utils import load_confidentials_from_env, initialize_logging
+from utils import get_from_env, init_logging
 from users import User
 
-DB_HOST = str(load_confidentials_from_env("MYSQL_DB_HOST"))
-DB_LOGIN = str(load_confidentials_from_env("MYSQL_DB_USERNAME"))
-DB_PASSWORD = str(load_confidentials_from_env("MYSQL_DB_PASSWORD"))
+DB_HOST = str(get_from_env("MYSQL_DB_HOST"))
+DB_LOGIN = str(get_from_env("MYSQL_DB_USERNAME"))
+DB_PASSWORD = str(get_from_env("MYSQL_DB_PASSWORD"))
 DB_NAME = 'myrplbetbot_db'
 
-initialize_logging()
+init_logging()
 
 
 class Database:
@@ -166,11 +166,11 @@ class Database:
 
     def _populate_users(self):
         admin_data = {
-            'telegram_id': int(load_confidentials_from_env('ADMIN_ID')),
+            'telegram_id': int(get_from_env('ADMIN_ID')),
             'is_admin': True
         }
         test_user_data = {
-            'telegram_id': int(load_confidentials_from_env('TEST_ACCOUNT_ID')),
+            'telegram_id': int(get_from_env('TEST_ACCOUNT_ID')),
             'first_name': 'test',
             'last_name': 'account'
         }

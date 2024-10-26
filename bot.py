@@ -8,10 +8,10 @@ import config
 from users import User
 from bet_input_sessions import BetInputSession
 
-TELEGRAM_TOKEN: str = utils.load_confidentials_from_env("TELEGRAM_TOKEN")
-ADMIN_ID: str = utils.load_confidentials_from_env("ADMIN_ID")
+TELEGRAM_TOKEN: str = utils.get_from_env("TELEGRAM_TOKEN")
+ADMIN_ID: str = utils.get_from_env("ADMIN_ID")
 
-utils.initialize_logging()
+utils.init_logging()
 
 
 class BetBot(telebot.TeleBot):
@@ -23,25 +23,23 @@ class BetBot(telebot.TeleBot):
         self._active_sessions: dict[int: BetInputSession] | None = None
 
         self._commands = {
-            '/start': {'callback': self._handle_start, 'desc': 'This command starts the bot!'},
-            '/help': {'callback': self._handle_help, 'desc': 'This command shows all supported commands!'}
+            '/start': {'callback': self._handle_start, 'desc': 'Запуск бота.'},
+            '/help': {'callback': self._handle_help, 'desc': 'Вывод всех поддерживаемых ботом команд.'}
         }
 
         self.register_message_handler(callback=self._handle_bet, func=self._filter_bet)
         self.register_message_handler(callback=self._handle_message, func=self._filter_message)
 
         self._get_registered_users()
-        self.start()
 
     def start(self) -> None:
         self.notify_admin("<b>БОТ ЗАПУЩЕН</b>")
-        #self._request_bets()
         try:
-            self.infinity_polling()
+            self.polling(non_stop=True)
         except Exception as e:
             logging.exception(repr(e))
             self.notify_admin(f"<b>БОТ ОСТАНОВЛЕН</b>\n\nНеожиданная ошибка: {e}")
-        else:
+        finally:
             self.notify_admin("<b>БОТ ОСТАНОВЛЕН</b>\n\nВозможная причина: принудительное завершение из IDE.")
 
     def send_message(self, *args, **kwargs):
@@ -202,7 +200,7 @@ class BetBot(telebot.TeleBot):
         """Fetches and updates the self.users field with a list of registered users from the database."""
         self.users = self.db.get_users()
 
-    def _request_bets(self) -> None:
+    def request_bets(self) -> None:
         """Sends a message to registered users with an inline button suggesting to input bets on upcoming round's
         matches."""
         text = '<b>Тур на подходе!</b>\nВремя делать ставки!'
@@ -369,9 +367,21 @@ class BetBot(telebot.TeleBot):
             return False
         return True
 
+    def send_bon_appetit(self):
+        self.notify_admin(f"{datetime.now().strftime(config.PREFERRED_TIME_FORMAT)}: "
+                          f"<b>Время обеда!<b>\nПриятного аппетита!")
+
+    def send_work_over(self):
+        self.notify_admin(f"{datetime.now().strftime(config.PREFERRED_TIME_FORMAT)}: "
+                          f"<b>Конец рабочего дня!<b>\nХорошего вечера!")
+
+    def send_test(self):
+        self.notify_admin(f"{datetime.now().strftime(config.PREFERRED_DATETIME_FORMAT)}: CRON SCHEDULER IN PROGRESS")
+
 
 if __name__ == "__main__":
     from db import Database
 
     db = Database()
     bot = BetBot(db)
+    bot.start()

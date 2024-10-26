@@ -1,23 +1,16 @@
 from datetime import datetime
+import logging
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
+from apscheduler.triggers.date import DateTrigger
 from apscheduler.executors.pool import ThreadPoolExecutor
 from apscheduler.jobstores.memory import MemoryJobStore
 import config
+from utils import init_logging
 
-
-def job_test_print():
-    print(f"{datetime.now().strftime(config.PREFERRED_TIME_FORMAT)}: Test print job running...")
-
-
-def job_bon_appetit():
-    print(f"Breakfast time! Bon appetit!")
-
-
-def job_cron_job():
-    print(f"{datetime.now().strftime(config.PREFERRED_TIME_FORMAT)}: cron job in action!")
+init_logging()
 
 
 class BotScheduler(BackgroundScheduler):
@@ -27,36 +20,16 @@ class BotScheduler(BackgroundScheduler):
             executors={'default': ThreadPoolExecutor()},
             timezone=config.PREFERRED_TIMEZONE
         )
-        self.jobs = {job_test_print: IntervalTrigger(seconds=3),
-                     job_bon_appetit: IntervalTrigger(seconds=6),
-                     job_cron_job: CronTrigger(hour=13, minute=49)}
-        for j, t in self.jobs.items():
-            self.add_job(func=j, trigger=t)
 
-    def schedule_job(self, job: callable, job_dt: datetime) -> None:
-        cron_args = BotScheduler._datetime_to_cron_args(job_dt)
-        self.add_job(func=job, trigger=CronTrigger(**cron_args))
+    def schedule(self, job: callable, job_dt: datetime) -> None:
+        self.add_job(func=job, trigger=DateTrigger(job_dt))
 
-    @staticmethod
-    def _datetime_to_cron_args(dt: datetime) -> dict:
-        return {
-            'year': dt.year,
-            'month': dt.month,
-            'day': dt.day,
-            'hour': dt.hour,
-            'minute': dt.minute,
-            'second': dt.second
-        }
+    def schedule_bon_appetit(self, job: callable) -> None:
+        self.add_job(func=job, trigger=CronTrigger(day_of_week='1-5', hour=12))
 
-import time
+    def schedule_work_over(self, job: callable) -> None:
+        self.add_job(func=job, trigger=CronTrigger(day_of_week='1-5', hour=16, minute=30))
+
 
 if __name__ == '__main__':
     s = BotScheduler()
-    try:
-        print(f"{datetime.now().strftime(config.PREFERRED_TIME_FORMAT)}: SCHEDULER ONLINE")
-        s.start()
-        while True:
-            pass
-    except (KeyboardInterrupt, SystemExit):
-        s.shutdown()
-        print(f"{datetime.now().strftime(config.PREFERRED_TIME_FORMAT)}: SCHEDULER SHUT DOWN")
