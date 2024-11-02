@@ -26,6 +26,5 @@ if __name__ == '__main__':
     bs = BotScheduler()
     bs.schedule_bon_appetit(job=bot.send_bon_appetit)
     bs.schedule_work_over(job=bot.send_work_over)
-    bs.schedule_test(job=bot.send_test)
 
     app = App(bot, db, bs)

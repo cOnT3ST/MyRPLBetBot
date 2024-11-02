@@ -21,11 +21,16 @@ class Database:
     def __init__(self):
         self.name = DB_NAME
         self.exists = False
+        self._tables = {
+            'users': {'create': 'create_users.sql', 'populate': self._populate_users},
+            'api_requests': {'create': 'create_api_requests.sql', 'populate': self._populate_api_requests}
+        }
         self.conn = None
         self.cur = None
         self.conn_attempt = 0
 
         self._ensure_db_exists()
+        logging.info(f"Database initialized.")
 
     def _try_connect(self) -> mysql.connector.connection.MySQLConnectionAbstract | None:
 
@@ -98,7 +103,7 @@ class Database:
             res = self.cur.fetchall()
         return res != []
 
-    def _create_db(self):
+    def _create_db(self) -> None:
         logging.info(f"Attempt to create db...")
         try:
             with self:
@@ -111,11 +116,14 @@ class Database:
     def _create_tables(self):
         """Creates tables in the db using queries from a MySQL script."""
         logging.info("Attempt to create tables...")
-        try:
-            self._execute_mysql_script('database/create_tables.sql')
-            logging.info(f"Tables created.")
-        except FileNotFoundError as e:
-            logging.exception(f"Database error: {repr(e)}")
+        for table in self._tables:
+            try:
+                create_sql = self._tables[table]['create']
+                self._execute_mysql_script(f"database/{create_sql}")
+            except FileNotFoundError as e:
+                logging.exception(f"Database error: {repr(e)}")
+                return
+        logging.info(f"Tables created.")
 
     def _execute_mysql_script(self, filepath: str) -> None:
         """
@@ -132,14 +140,46 @@ class Database:
                 self.cur.execute(q)
 
     def _ensure_db_exists(self) -> None:
-        """Creates a db exist on MySQL server."""
+        """Checks if the DB already exists on MySQL server and creates it if not."""
         if not self._db_exists():
             logging.info(f"Database '{self.name}' not found.")
             self._create_db()
             self._create_tables()
             self._populate_tables()
         else:
+            logging.info(f"Database '{self.name}' found.")
             self.exists = True
+            self._ensure_tables_exist()
+
+    def _ensure_tables_exist(self) -> None:
+        """Checks if tables already exist in the DB and creates them if not."""
+        for table in self._tables:
+            if not self._table_exists(table):
+                logging.info(f"Table '{table}' not found.")
+                self._create_table(table)
+
+    def _table_exists(self, table: str) -> bool:
+        """Shows if a table is already stored in the DB"""
+        query = f"SHOW TABLES LIKE '{table}'"
+        with self:
+            self.cur.execute(query)
+            res = self.cur.fetchall()
+        return res != []
+
+    def _create_table(self, table: str) -> None:
+        logging.info(f"Attempt to create table '{table}'...")
+        sql_script = self._tables[table]['create']
+        try:
+            with self:
+                self._execute_mysql_script(f'database/{sql_script}')
+                self._populate_table(table)
+                logging.info(f"Table '{table}' created.")
+        except Exception as e:
+            logging.exception(f"An unexpected error occurred while creating table: {repr(e)}")
+
+    def _populate_table(self, table: str) -> None:
+        pop_method = self._tables[table]['populate']
+        pop_method()
 
     @staticmethod
     def _extract_mysql_queries(filepath: str) -> list[str]:
@@ -156,6 +196,7 @@ class Database:
 
     def _populate_tables(self) -> None:
         self._populate_users()
+        self._populate_api_requests()
 
     @staticmethod
     def _write_insert_query(table: str, data: dict) -> str:
@@ -181,6 +222,12 @@ class Database:
         with self:
             self.cur.execute(admin_q, tuple(admin_data.values()))
             self.cur.execute(test_q, tuple(test_user_data.values()))
+
+    def _populate_api_requests(self):
+        data = {'requests_today': 0, 'daily_quota': 100}
+        query = Database._write_insert_query('api_requests', data)
+        with self:
+            self.cur.execute(query, tuple(data.values()))
 
     def get_users(self) -> list[User] | None:
         query = 'SELECT * FROM users WHERE used_bot = 1'
