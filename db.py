@@ -130,9 +130,10 @@ class Database:
         for t in tables:
             self._create_table(t)
 
-        logging.info("Table creation finished.")
+        logging.info("Tables creation finished.")
 
     def _create_table(self, table: str) -> None:
+        """Creates a single table in the db using it's create query and populates it with initial data."""
         logging.info(f"Creating table '{table}'...")
 
         sql_script = self._tables[table]['create']
@@ -150,6 +151,7 @@ class Database:
             logging.exception(f"An unexpected error occurred while populating table: {repr(e)}")
 
     def _populate_table(self, table: str) -> None:
+        """Populates a table with data."""
         logging.info(f"Populating table '{table}'...")
         pop_method = self._tables[table]['populate']
         pop_method()
@@ -183,21 +185,7 @@ class Database:
         else:
             logging.info(f"Database '{self._name}' found.")
             self._exists = True
-            self._ensure_tables_exist()
-
-    def _ensure_tables_exist(self) -> None:
-        """Checks if tables already exist in the DB and creates them if not."""
-        with self:
-            self.cur.execute('SHOW TABLES;')
-            stored_tables = self.cur.fetchall()
-        tables_to_create = set(self._tables) - set(stored_tables)
-
-        if not tables_to_create:
-            return
-
-        for table in tables_to_create:
-            logging.info(f"Table '{table}' not found.")
-            self._create_table(table)
+            self._create_tables()
 
     def _table_exists(self, table: str) -> bool:
         """Shows if a table is already stored in the DB"""
@@ -221,10 +209,6 @@ class Database:
         queries = [q.replace('\n', '') for q in queries]
         return queries
 
-    def _populate_tables(self) -> None:
-        for t in self._tables:
-            self._populate_table(t)
-
     @staticmethod
     def _write_insert_query(table: str, data: dict) -> str:
         cols = tuple(data.keys())
@@ -233,6 +217,7 @@ class Database:
         return q
 
     def _populate_users(self):
+        """Populates 'users' table with initial data."""
         admin_data = {
             'telegram_id': int(get_from_env('ADMIN_ID')),
             'is_admin': True
@@ -251,6 +236,7 @@ class Database:
             self.cur.execute(test_q, tuple(test_user_data.values()))
 
     def _populate_api_requests(self):
+        """Populates 'api_requests' table with initial data."""
         data = {'requests_today': 0, 'daily_quota': 100}
         query = Database._write_insert_query('api_requests', data)
         with self:
