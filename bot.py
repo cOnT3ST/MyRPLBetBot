@@ -33,16 +33,16 @@ class BetBot(telebot.TeleBot):
         self._get_registered_users()
 
     def start(self) -> None:
-        logging.info("Бот запущен.")
+        logging.info("Bot started.")
         self.notify_admin("<b>БОТ ЗАПУЩЕН</b>")
         try:
             self.polling(non_stop=True)
         except Exception as e:
-            logging.info("Бот остановлен. Неожиданная ошибка.")
+            logging.info("Bot stopped. Unexpected error occured.")
             logging.exception(repr(e))
             self.notify_admin(f"<b>БОТ ОСТАНОВЛЕН</b>\n\nНеожиданная ошибка: {e}")
         finally:
-            logging.info("Бот остановлен. Возможная причина: принудительное завершение из IDE.")
+            logging.info("Bot stopped. Probably due to manual stoppage from IDE.")
             self.notify_admin("<b>БОТ ОСТАНОВЛЕН</b>\n\nВозможная причина: принудительное завершение из IDE.")
 
     def send_message(self, *args, **kwargs):

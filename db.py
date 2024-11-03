@@ -19,15 +19,15 @@ class Database:
     RETRY_DELAY = 2
 
     def __init__(self):
-        self.name = DB_NAME
-        self.exists = False
+        self._name = DB_NAME
+        self._exists = False
         self._tables = {
             'users': {'create': 'create_users.sql', 'populate': self._populate_users},
             'api_requests': {'create': 'create_api_requests.sql', 'populate': self._populate_api_requests}
         }
         self.conn = None
         self.cur = None
-        self.conn_attempt = 0
+        self._conn_attempt = 0
 
         self._ensure_db_exists()
         logging.info(f"Database initialized.")
@@ -35,14 +35,14 @@ class Database:
     def _try_connect(self) -> mysql.connector.connection.MySQLConnectionAbstract | None:
 
         conn_args = {'host': DB_HOST, 'user': DB_LOGIN, 'password': DB_PASSWORD}
-        if self.exists:
-            conn_args['database'] = self.name
+        if self._exists:
+            conn_args['database'] = self._name
 
         try:
             self.conn = mysql.connector.connect(**conn_args, connection_timeout=10)
-            if self.conn_attempt != 0:
+            if self._conn_attempt != 0:
                 logging.info(f"Connection retry successful.")
-            self.conn_attempt = 0
+            self._conn_attempt = 0
             return self.conn
         except mysql.connector.errors.Error as e:
             logging.exception(f"Database error: {e.msg}")
@@ -71,9 +71,9 @@ class Database:
 
     def _retry_connection(self) -> None:
         """Retries connection attempts to db"""
-        if self.conn_attempt < Database.MAX_RETRIES:
-            self.conn_attempt += 1
-            logging.warning(f"Retrying connection (attempt {self.conn_attempt}/{Database.MAX_RETRIES})...")
+        if self._conn_attempt < Database.MAX_RETRIES:
+            self._conn_attempt += 1
+            logging.warning(f"Retrying connection (attempt {self._conn_attempt}/{Database.MAX_RETRIES})...")
             time.sleep(Database.RETRY_DELAY)
             self._try_connect()
         else:
@@ -97,39 +97,45 @@ class Database:
 
     def _db_exists(self) -> bool:
         """Shows if a db is already stored on server"""
-        query = f"SHOW DATABASES LIKE '{self.name}'"
+        query = f"SHOW DATABASES LIKE '{self._name}'"
         with self:
             self.cur.execute(query)
             res = self.cur.fetchall()
         return res != []
 
     def _create_db(self) -> None:
-        logging.info(f"Attempt to create DB '{self.name}'...")
+        logging.info(f"Creating DB '{self._name}'...")
         try:
             with self:
-                self.cur.execute(f"CREATE DATABASE {self.name}")
-                self.exists = True
-                logging.info(f"Database '{self.name}' created.")
+                self.cur.execute(f"CREATE DATABASE {self._name}")
+                self._exists = True
+                logging.info(f"Database '{self._name}' created.")
         except Exception as e:
             logging.exception(f"An unexpected error occurred while creating db: {repr(e)}")
 
+    def _missing_tables(self) -> tuple[str, ...]:
+        with self:
+            self.cur.execute('SHOW TABLES;')
+            stored_tables = self.cur.fetchall()
+        missing_tables = tuple(set(self._tables) - set(stored_tables))
+        return missing_tables
+
     def _create_tables(self):
         """Creates tables in the db using queries from MySQL scripts."""
-        logging.info("Attempt to create tables...")
-        failed_tables = []
-        for table in self._tables:
+        tables = self._missing_tables()
+        if not tables:
+            return
+
+        logging.info("Creating tables...")
+        for table in tables:
             try:
                 sql_script = self._tables[table]['create']
                 sql_path = path.join('database', sql_script)
                 self._execute_mysql_script(sql_path)
             except FileNotFoundError as e:
                 logging.exception(f"Database error: {repr(e)}")
-                failed_tables.append(table)
                 continue
-        if failed_tables:
-            failed_tables_str = ', '.join(f"'{ft}'" for ft in failed_tables)
-            logging.info(f"Table creation finished. Failed to create {failed_tables_str}.")
-        logging.info("Table creation finished. All tables created!")
+        logging.info("Table creation finished.")
 
     def _execute_mysql_script(self, filepath: str) -> None:
         """
@@ -153,45 +159,57 @@ class Database:
         this script will find DB and only create tables.
         """
         if not self._db_exists():
-            logging.info(f"Database '{self.name}' not found.")
+            logging.info(f"Database '{self._name}' not found.")
             self._create_db()
             self._create_tables()
             self._populate_tables()
         else:
-            logging.info(f"Database '{self.name}' found.")
-            self.exists = True
+            logging.info(f"Database '{self._name}' found.")
+            self._exists = True
             self._ensure_tables_exist()
 
     def _ensure_tables_exist(self) -> None:
         """Checks if tables already exist in the DB and creates them if not."""
-        for table in self._tables:
-            if not self._table_exists(table):
-                logging.info(f"Table '{table}' not found.")
-                self._create_table(table)
+        with self:
+            self.cur.execute('SHOW TABLES;')
+            stored_tables = self.cur.fetchall()
+        tables_to_create = set(self._tables) - set(stored_tables)
+
+        if not tables_to_create:
+            return
+
+        for table in tables_to_create:
+            logging.info(f"Table '{table}' not found.")
+            self._create_table(table)
 
     def _table_exists(self, table: str) -> bool:
         """Shows if a table is already stored in the DB"""
         query = f"SHOW TABLES LIKE '{table}'"
+
         with self:
             self.cur.execute(query)
             res = self.cur.fetchall()
         return res != []
 
     def _create_table(self, table: str) -> None:
-        logging.info(f"Attempt to create table '{table}'...")
+        logging.info(f"Creating table '{table}'...")
         sql_script = self._tables[table]['create']
         try:
-            with self:
-                sql_path = path.join('database', sql_script)
-                self._execute_mysql_script(sql_path)
-                self._populate_table(table)
-                logging.info(f"Table '{table}' created.")
+            sql_path = path.join('database', sql_script)
+            self._execute_mysql_script(sql_path)
+            logging.info(f"Table '{table}' created.")
         except Exception as e:
             logging.exception(f"An unexpected error occurred while creating table: {repr(e)}")
+        try:
+            self._populate_table(table)
+        except Exception as e:
+            logging.exception(f"An unexpected error occurred while populating table: {repr(e)}")
 
     def _populate_table(self, table: str) -> None:
+        logging.info(f"Populating table '{table}'...")
         pop_method = self._tables[table]['populate']
         pop_method()
+        logging.info(f"Table populated.")
 
     @staticmethod
     def _extract_mysql_queries(filepath: str) -> list[str]:
