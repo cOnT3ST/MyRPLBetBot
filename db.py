@@ -127,15 +127,33 @@ class Database:
             return
 
         logging.info("Creating tables...")
-        for table in tables:
-            try:
-                sql_script = self._tables[table]['create']
-                sql_path = path.join('database', sql_script)
-                self._execute_mysql_script(sql_path)
-            except FileNotFoundError as e:
-                logging.exception(f"Database error: {repr(e)}")
-                continue
+        for t in tables:
+            self._create_table(t)
+
         logging.info("Table creation finished.")
+
+    def _create_table(self, table: str) -> None:
+        logging.info(f"Creating table '{table}'...")
+
+        sql_script = self._tables[table]['create']
+        sql_path = path.join('database', sql_script)
+
+        try:
+            self._execute_mysql_script(sql_path)
+            logging.info(f"Table '{table}' created.")
+        except Exception as e:
+            logging.exception(f"An unexpected error occurred while creating table: {repr(e)}")
+
+        try:
+            self._populate_table(table)
+        except Exception as e:
+            logging.exception(f"An unexpected error occurred while populating table: {repr(e)}")
+
+    def _populate_table(self, table: str) -> None:
+        logging.info(f"Populating table '{table}'...")
+        pop_method = self._tables[table]['populate']
+        pop_method()
+        logging.info(f"Table populated.")
 
     def _execute_mysql_script(self, filepath: str) -> None:
         """
@@ -162,7 +180,6 @@ class Database:
             logging.info(f"Database '{self._name}' not found.")
             self._create_db()
             self._create_tables()
-            self._populate_tables()
         else:
             logging.info(f"Database '{self._name}' found.")
             self._exists = True
@@ -190,26 +207,6 @@ class Database:
             self.cur.execute(query)
             res = self.cur.fetchall()
         return res != []
-
-    def _create_table(self, table: str) -> None:
-        logging.info(f"Creating table '{table}'...")
-        sql_script = self._tables[table]['create']
-        try:
-            sql_path = path.join('database', sql_script)
-            self._execute_mysql_script(sql_path)
-            logging.info(f"Table '{table}' created.")
-        except Exception as e:
-            logging.exception(f"An unexpected error occurred while creating table: {repr(e)}")
-        try:
-            self._populate_table(table)
-        except Exception as e:
-            logging.exception(f"An unexpected error occurred while populating table: {repr(e)}")
-
-    def _populate_table(self, table: str) -> None:
-        logging.info(f"Populating table '{table}'...")
-        pop_method = self._tables[table]['populate']
-        pop_method()
-        logging.info(f"Table populated.")
 
     @staticmethod
     def _extract_mysql_queries(filepath: str) -> list[str]:
