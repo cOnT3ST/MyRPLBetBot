@@ -9,7 +9,7 @@ from users import User
 DB_HOST = str(get_from_env("MYSQL_DB_HOST"))
 DB_LOGIN = str(get_from_env("MYSQL_DB_USERNAME"))
 DB_PASSWORD = str(get_from_env("MYSQL_DB_PASSWORD"))
-DB_NAME = 'myrplbetbot_db'
+DB_NAME = 'local_BetBotDB'
 
 init_logging()
 
@@ -104,7 +104,7 @@ class Database:
         return res != []
 
     def _create_db(self) -> None:
-        logging.info(f"Attempt to create db...")
+        logging.info(f"Attempt to create DB '{self.name}'...")
         try:
             with self:
                 self.cur.execute(f"CREATE DATABASE {self.name}")
@@ -114,20 +114,27 @@ class Database:
             logging.exception(f"An unexpected error occurred while creating db: {repr(e)}")
 
     def _create_tables(self):
-        """Creates tables in the db using queries from a MySQL script."""
+        """Creates tables in the db using queries from MySQL scripts."""
         logging.info("Attempt to create tables...")
+        failed_tables = []
         for table in self._tables:
             try:
-                create_sql = self._tables[table]['create']
-                self._execute_mysql_script(f"database/{create_sql}")
+                sql_script = self._tables[table]['create']
+                sql_path = path.join('database', sql_script)
+                self._execute_mysql_script(sql_path)
             except FileNotFoundError as e:
                 logging.exception(f"Database error: {repr(e)}")
-                return
-        logging.info(f"Tables created.")
+                failed_tables.append(table)
+                continue
+        if failed_tables:
+            failed_tables_str = ', '.join(f"'{ft}'" for ft in failed_tables)
+            logging.info(f"Table creation finished. Failed to create {failed_tables_str}.")
+        logging.info("Table creation finished. All tables created!")
 
     def _execute_mysql_script(self, filepath: str) -> None:
         """
         Executes queries from a MySQL .sql file.
+
         :param filepath: A path to the .sql file with MySQL queries.
         """
         if not path.exists(filepath):
@@ -140,7 +147,11 @@ class Database:
                 self.cur.execute(q)
 
     def _ensure_db_exists(self) -> None:
-        """Checks if the DB already exists on MySQL server and creates it if not."""
+        """
+        Checks if the DB already exists on MySQL server and creates it if not.
+        This only concerns local DB because you have to create remote DB manually. In that case
+        this script will find DB and only create tables.
+        """
         if not self._db_exists():
             logging.info(f"Database '{self.name}' not found.")
             self._create_db()
@@ -171,7 +182,8 @@ class Database:
         sql_script = self._tables[table]['create']
         try:
             with self:
-                self._execute_mysql_script(f'database/{sql_script}')
+                sql_path = path.join('database', sql_script)
+                self._execute_mysql_script(sql_path)
                 self._populate_table(table)
                 logging.info(f"Table '{table}' created.")
         except Exception as e:
@@ -195,8 +207,8 @@ class Database:
         return queries
 
     def _populate_tables(self) -> None:
-        self._populate_users()
-        self._populate_api_requests()
+        for t in self._tables:
+            self._populate_table(t)
 
     @staticmethod
     def _write_insert_query(table: str, data: dict) -> str:
