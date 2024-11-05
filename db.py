@@ -9,7 +9,8 @@ from users import User
 DB_HOST = str(get_from_env("MYSQL_DB_HOST"))
 DB_LOGIN = str(get_from_env("MYSQL_DB_USERNAME"))
 DB_PASSWORD = str(get_from_env("MYSQL_DB_PASSWORD"))
-DB_NAME = 'local_BetBotDB'
+ENV_TYPE = str(get_from_env("ENV_TYPE"))
+DB_NAME = 'local_BetBotDB' if ENV_TYPE == 'development' else str(get_from_env("MYSQL_DB_NAME"))
 
 init_logging()
 
