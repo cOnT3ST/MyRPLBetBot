@@ -116,7 +116,9 @@ class Database:
     def _missing_tables(self) -> tuple[str, ...]:
         with self:
             self.cur.execute('SHOW TABLES;')
-            stored_tables = self.cur.fetchall()
+            fetched_data = self.cur.fetchall()  # returns a list of dicts
+
+        stored_tables = [v for d in fetched_data for v in d.values()]
         missing_tables = tuple(set(self._tables) - set(stored_tables))
         return missing_tables
 
