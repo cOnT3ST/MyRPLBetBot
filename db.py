@@ -11,6 +11,7 @@ DB_LOGIN = str(get_from_env("MYSQL_DB_USERNAME"))
 DB_PASSWORD = str(get_from_env("MYSQL_DB_PASSWORD"))
 ENV_TYPE = str(get_from_env("ENV_TYPE"))
 DB_NAME = 'local_BetBotDB' if ENV_TYPE == 'development' else str(get_from_env("MYSQL_DB_NAME"))
+DB_PORT = 3306 if ENV_TYPE == 'development' else str(get_from_env("MYSQL_DB_PORT"))
 
 init_logging()
 
@@ -35,7 +36,7 @@ class Database:
 
     def _try_connect(self) -> mysql.connector.connection.MySQLConnectionAbstract | None:
 
-        conn_args = {'host': DB_HOST, 'user': DB_LOGIN, 'password': DB_PASSWORD}
+        conn_args = {'host': DB_HOST, 'user': DB_LOGIN, 'password': DB_PASSWORD, 'port': DB_PORT}
         if self._exists:
             conn_args['database'] = self._name
 
