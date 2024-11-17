@@ -23,9 +23,17 @@ class Database:
         self._name = DB_NAME
         self._exists = False
         self._tables = {
+            'api_requests': {'create': 'create_api_requests.sql', 'populate': self._populate_api_requests},
             'users': {'create': 'create_users.sql', 'populate': self._populate_users},
-            'api_requests': {'create': 'create_api_requests.sql', 'populate': self._populate_api_requests}
+            'teams': {'create': 'create_teams.sql'},
+            'leagues': {'create': 'create_leagues.sql'},
+            'seasons': {'create': 'create_seasons.sql'},
+            'bet_contests': {'create': 'create_bet_contests.sql'},
+            'matches': {'create': 'create_matches.sql'},
+            'bets': {'create': 'create_bets.sql'}
         }
+        self._creation_order = ('api_requests', 'users', 'teams', 'leagues', 'seasons', 'bet_contests', 'matches',
+                                'bets')
         self.conn = None
         self.cur = None
         self._conn_attempt = 0
@@ -65,6 +73,8 @@ class Database:
         # 1045: Access denied for user 'user_name'@'host_name' (using password: YES) (wrong username or password)
         # 2003: Can't connect to MySQL server on 'localhost:port' (MySQL server not responding e.g., not running)
         # 2005: Unknown MySQL server host 'host-name' (wrong hostname)
+        # TODO _mysql_connector.MySQLInterfaceError: Can't connect to MySQL server on 'localhost:3306' (10061)
+        # TODO WHEN MYSQL80 isn't running
 
         retriable_err_codes = (2003,)
         # I consider all other possible exceptions to be retriable by default.
@@ -125,12 +135,14 @@ class Database:
 
     def _create_tables(self):
         """Creates tables in the db using queries from MySQL scripts."""
-        tables = self._missing_tables()
-        if not tables:
+        missing_tables = self._missing_tables()
+        if not missing_tables:
             return
 
         logging.info("Creating tables...")
-        for t in tables:
+
+        ordered_tables = tuple(t for t in self._creation_order if t in missing_tables)
+        for t in ordered_tables:
             self._create_table(t)
 
         logging.info("Tables creation finished.")
@@ -141,6 +153,7 @@ class Database:
 
         sql_script = self._tables[table]['create']
         sql_path = path.join('database', sql_script)
+        pop_method = self._tables[table].get('populate', None)
 
         try:
             self._execute_mysql_script(sql_path)
@@ -148,15 +161,16 @@ class Database:
         except Exception as e:
             logging.exception(f"An unexpected error occurred while creating table: {repr(e)}")
 
+        if not pop_method:
+            return
         try:
-            self._populate_table(table)
+            self._populate_table(table, pop_method)
         except Exception as e:
             logging.exception(f"An unexpected error occurred while populating table: {repr(e)}")
 
-    def _populate_table(self, table: str) -> None:
+    def _populate_table(self, table: str, pop_method: callable) -> None:
         """Populates a table with data."""
         logging.info(f"Populating table '{table}'...")
-        pop_method = self._tables[table]['populate']
         pop_method()
         logging.info(f"Table populated.")
 
@@ -184,11 +198,10 @@ class Database:
         if not self._db_exists():
             logging.info(f"Database '{self._name}' not found.")
             self._create_db()
-            self._create_tables()
         else:
             logging.info(f"Database '{self._name}' found.")
             self._exists = True
-            self._create_tables()
+        self._create_tables()
 
     def _table_exists(self, table: str) -> bool:
         """Shows if a table is already stored in the DB"""
@@ -213,7 +226,7 @@ class Database:
         return queries
 
     @staticmethod
-    def _write_insert_query(table: str, data: dict) -> str:
+    def _gen_insert_query(table: str, data: dict) -> str:
         cols = tuple(data.keys())
         pholders = ', '.join(["%s" for _ in cols])
         q = f"INSERT INTO {table} ({', '.join(cols)}) VALUES ({pholders});"
@@ -231,8 +244,8 @@ class Database:
             'last_name': 'account'
         }
 
-        admin_q = Database._write_insert_query('users', admin_data)
-        test_q = Database._write_insert_query('users', test_user_data)
+        admin_q = Database._gen_insert_query('users', admin_data)
+        test_q = Database._gen_insert_query('users', test_user_data)
 
         with self:
             self.cur.execute(admin_q, tuple(admin_data.values()))
@@ -241,7 +254,7 @@ class Database:
     def _populate_api_requests(self):
         """Populates 'api_requests' table with initial data."""
         data = {'requests_today': 0, 'daily_quota': 100}
-        query = Database._write_insert_query('api_requests', data)
+        query = Database._gen_insert_query('api_requests', data)
         with self:
             self.cur.execute(query, tuple(data.values()))
 
@@ -295,6 +308,33 @@ class Database:
         user = self.get_user(telegram_id)
         return bool(user.blocked_bot)
 
+    def insert_league(self, league_data: dict) -> None:
+        query = Database._gen_insert_query('leagues', league_data)
+        with self:
+            self.cur.execute(query, tuple(league_data.values()))
+
+    def _insert_season(self, season_data: dict) -> None:
+        query = Database._gen_insert_query('seasons', season_data)
+        with self:
+            self.cur.execute(query, tuple(season_data.values()))
+
 
 if __name__ == '__main__':
     db = Database()
+    # fetched_data = {
+    #     'league': {
+    #         'id': 235,
+    #         'logo_url': 'https://media.api-sports.io/football/leagues/235.png'
+    #     },
+    #     'season': {
+    #         'year': 2024,
+    #         'start_date': '2024-07-21',
+    #         'end_date': '2025-05-24',
+    #         'current': True
+    #     }
+    # }
+    # league_data = fetched_data['league']
+    # league_api_id = league_data['id']
+    # season_data = fetched_data['season']
+    # season_data.update({'league_api_id': 235})
+    # db._insert_season(season_data)
