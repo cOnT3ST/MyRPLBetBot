@@ -21,10 +21,12 @@ class BetBot(telebot.TeleBot):
         self.db = db
         self.users: list[User] | None = None
         self._active_sessions: dict[int: BetInputSession] | None = None
+        self.command_handler = None
 
         self._commands = {
             '/start': {'callback': self._handle_start, 'desc': 'Запуск бота.'},
-            '/help': {'callback': self._handle_help, 'desc': 'Вывод всех поддерживаемых ботом команд.'}
+            '/help': {'callback': self._handle_help, 'desc': 'Вывод всех поддерживаемых ботом команд.'},
+            '/create_contest': {'callback': self._forward_command, 'desc': 'Создание соревнования по ставкам.'},
         }
 
         self.register_message_handler(callback=self._handle_bet, func=self._filter_bet)
@@ -44,6 +46,19 @@ class BetBot(telebot.TeleBot):
         finally:
             logging.info("Bot stopped. Probably due to manual stoppage from IDE.")
             self.notify_admin("<b>БОТ ОСТАНОВЛЕН</b>\n\nВозможная причина: принудительное завершение из IDE.")
+
+    def set_command_handler(self, handler):
+        """Attach the controller as the command handler."""
+        self.command_handler = handler
+
+    def _forward_command(self, message):
+        """Forward received commands to the controller."""
+        if self.command_handler:
+            self.command_handler.handle_create_contest(message)
+        else:
+            self.send_message(
+                message.chat.id, "Command handler not configured. Please contact the admin."
+            )
 
     def send_message(self, *args, **kwargs):
         chat_id = kwargs.get('chat_id', args[0] if args else None)
@@ -177,6 +192,11 @@ class BetBot(telebot.TeleBot):
         comms_n_descs = f'\n\n'.join(comms_n_descs)
         self.reply_to(message, f"Список поддерживаемых ботом команд:\n\n"
                                f"{comms_n_descs}")
+
+    def _handle_create_contest(self, message: telebot.types.Message) -> None:
+        """A handler func for the '/handle_create_contest' command."""
+        # self._create_contest()
+        self.send_options()
 
     def _user_allowed(self, telegram_id: int) -> bool:
         """
@@ -380,6 +400,15 @@ class BetBot(telebot.TeleBot):
 
     def send_test(self):
         self.notify_admin(f"{datetime.now().strftime(config.PREFERRED_DATETIME_FORMAT)}: CRON SCHEDULER IN PROGRESS")
+
+    def _create_contest(self):
+        self.notify_admin('Создание чемпионата...')
+
+    def send_options(self):
+        keyboard = telebot.types.InlineKeyboardMarkup()
+        keyboard.add(telebot.types.InlineKeyboardButton("Bon Appétit", callback_data='bon_appetit'))
+        keyboard.add(telebot.types.InlineKeyboardButton("Work Over", callback_data='work_over'))
+        self.send_message(ADMIN_ID, text='Выберете опцию:', reply_markup=keyboard)
 
 
 if __name__ == "__main__":
