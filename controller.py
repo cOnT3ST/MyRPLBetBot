@@ -53,13 +53,6 @@ class Controller:
         self.bot.send_message(callback_query.from_user.id, "Time to wrap up work!")
         self.bot.answer_callback_query(callback_query.id)
 
-
-if __name__ == '__main__':
-    db = Database()
-    bot = BetBot(db)
-    stats = StatsAPIHandler(db)
-    bs = BotScheduler()
-    bs.schedule_bon_appetit(job=bot.send_bon_appetit)
-    bs.schedule_work_over(job=bot.send_work_over)
-
-    c = Controller(telegram_bot=bot, database=db, scheduler=bs, stats_api_handler=stats)
+    def start(self):
+        self.scheduler.start()
+        self.bot.start()

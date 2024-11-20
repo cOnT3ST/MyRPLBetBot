@@ -6,32 +6,17 @@ from controller import Controller
 
 
 class App:
-    def __init__(
-            self,
-            telegram_bot: BetBot,
-            database: Database,
-            scheduler: BotScheduler,
-            stats_api_handler: StatsAPIHandler
-    ):
-        self.bot = telegram_bot
-        self.db = database
-        self.stats = stats_api_handler
-        self.scheduler = scheduler
-
-        self.start()
-
-    def start(self):
-        self.scheduler.start()
-        self.bot.start()
+    def __init__(self, controller: Controller):
+        self.controller = controller
+        self.controller.start()
 
 
 if __name__ == '__main__':
     db = Database()
     bot = BetBot(db)
-    stats = StatsAPIHandler(db)
-    bs = BotScheduler()
-    bs.schedule_bon_appetit(job=bot.send_bon_appetit)
-    bs.schedule_work_over(job=bot.send_work_over)
-    c = Controller(telegram_bot=bot, database=db, scheduler=bs, stats_api_handler=stats)
-
-    app = App(telegram_bot=bot, database=db, stats_api_handler=stats, scheduler=bs)
+    stats_api_handler = StatsAPIHandler(db)
+    scheduler = BotScheduler()
+    scheduler.schedule_bon_appetit(job=bot.send_bon_appetit)
+    scheduler.schedule_work_over(job=bot.send_work_over)
+    controller = Controller(telegram_bot=bot, database=db, scheduler=scheduler, stats_api_handler=stats_api_handler)
+    app = App(controller)
