@@ -19,20 +19,17 @@ class BetBot(telebot.TeleBot):
     def __init__(self, db):
         super().__init__(token=TELEGRAM_TOKEN, parse_mode='HTML')
         self.db = db
-        self.users: list[User] | None = None
         self._active_sessions: dict[int: BetInputSession] | None = None
-        self.command_handler = None
+        self._command_handler = None
 
-        self._commands = {
-            '/start': {'callback': self._handle_start, 'desc': 'Запуск бота.'},
-            '/help': {'callback': self._handle_help, 'desc': 'Вывод всех поддерживаемых ботом команд.'},
-            '/create_contest': {'callback': self._forward_command, 'desc': 'Создание соревнования по ставкам.'},
+        self.commands = {
+            '/start': {'desc': 'Запуск бота.'},
+            '/help': {'desc': 'Вывод всех поддерживаемых ботом команд.'},
+            '/create_contest': {'desc': 'Создание соревнования по ставкам.'}
         }
 
         self.register_message_handler(callback=self._handle_bet, func=self._filter_bet)
         self.register_message_handler(callback=self._handle_message, func=self._filter_message)
-
-        self._get_registered_users()
 
     def start(self) -> None:
         logging.info("Bot started.")
@@ -40,7 +37,7 @@ class BetBot(telebot.TeleBot):
         try:
             self.polling(non_stop=True)
         except Exception as e:
-            logging.info("Bot stopped. Unexpected error occured.")
+            logging.info("Bot stopped. Unexpected error occurred.")
             logging.exception(repr(e))
             self.notify_admin(f"<b>БОТ ОСТАНОВЛЕН</b>\n\nНеожиданная ошибка: {e}")
         finally:
@@ -49,16 +46,14 @@ class BetBot(telebot.TeleBot):
 
     def set_command_handler(self, handler):
         """Attach the controller as the command handler."""
-        self.command_handler = handler
+        self._command_handler = handler
 
     def _forward_command(self, message):
         """Forward received commands to the controller."""
-        if self.command_handler:
-            self.command_handler.handle_create_contest(message)
+        if self._command_handler:
+            self._command_handler.handle_command(message)
         else:
-            self.send_message(
-                message.chat.id, "Command handler not configured. Please contact the admin."
-            )
+            self.send_message(message.chat.id, "Command handler not configured. Please contact the admin.")
 
     def send_message(self, *args, **kwargs):
         chat_id = kwargs.get('chat_id', args[0] if args else None)
@@ -89,12 +84,13 @@ class BetBot(telebot.TeleBot):
         """
         text = message.text
         if text.startswith('/'):
-            if text in self._commands:
-                self._handle_command(message)
+            if text in self.commands:
+                self._forward_command(message)
                 return
             else:
-                self.reply_to(message=message, text="<b>Ой!</b>\n\nВы ввели неподдерживаемую команду.\nДля вывода "
-                                                    "доступных команд введите /help.")
+                self.reply_to(message=message, text="<b>Ой!</b>\n\n"
+                                                    "Вы ввели неподдерживаемую команду.\n"
+                                                    "Для вывода доступных команд введите /help.")
                 return
         self._handle_text(message)
 
@@ -105,12 +101,6 @@ class BetBot(telebot.TeleBot):
                f"Message type: {message.content_type}\n" \
                f"Text: {message.text}\n"
         self.reply_to(message, text)
-
-    def _handle_command(self, message) -> None:
-        """A handler for supported commands."""
-        command = message.text
-        callback = self._commands[command]['callback']
-        callback(message)
 
     def _filter_message(self, message: telebot.types.Message) -> bool:
         """
@@ -155,7 +145,8 @@ class BetBot(telebot.TeleBot):
         :return: True if message is a text, False otherwise.
         """
         if not message.content_type == 'text':
-            return False, f"<b>Ой!</b>\nЭтот бот понимает только текстовые сообщения."
+            return False, f"<b>Ой!</b>\n" \
+                          f"Этот бот понимает только текстовые сообщения."
         return True, None
 
     def _filter_bet(self, message: telebot.types.Message) -> bool:
@@ -167,36 +158,6 @@ class BetBot(telebot.TeleBot):
         if not self._bet_session_active(message.from_user.id):
             return False
         return True
-
-    def _ensure_user_registration(self, message: telebot.types.Message) -> None:
-        """
-        Ensures that the user is registered in the database.
-        Checks if a user is registered i.e., has already interacted with the bot at least once. If not,
-        registers the user.
-        :param message: The incoming message object from a user.
-        """
-        telegram_id = message.from_user.id
-        new_user = self.db.user_registered(telegram_id)
-        if not new_user:
-            self.db.register_user(telegram_id)
-
-    def _handle_start(self, message: telebot.types.Message) -> None:
-        """A handler func for the '/start' command."""
-        self._ensure_user_registration(message)
-        self._get_registered_users()
-        self.reply_to(message, 'You used /start command!')
-
-    def _handle_help(self, message: telebot.types.Message) -> None:
-        """A handler func for the '/help' command."""
-        comms_n_descs = [f"{c} - {d['desc']}" for c, d in self._commands.items()]
-        comms_n_descs = f'\n\n'.join(comms_n_descs)
-        self.reply_to(message, f"Список поддерживаемых ботом команд:\n\n"
-                               f"{comms_n_descs}")
-
-    def _handle_create_contest(self, message: telebot.types.Message) -> None:
-        """A handler func for the '/handle_create_contest' command."""
-        # self._create_contest()
-        self.send_options()
 
     def _user_allowed(self, telegram_id: int) -> bool:
         """
@@ -218,23 +179,6 @@ class BetBot(telebot.TeleBot):
         :param telegram_id: User's telegram ID.
         """
         self.db.mark_bot_unblock(telegram_id)
-
-    def _get_registered_users(self) -> None:
-        """Fetches and updates the self.users field with a list of registered users from the database."""
-        self.users = self.db.get_users()
-
-    def request_bets(self) -> None:
-        """Sends a message to registered users with an inline button suggesting to input bets on upcoming round's
-        matches."""
-        text = '<b>Тур на подходе!</b>\nВремя делать ставки!'
-        markup = telebot.types.InlineKeyboardMarkup(row_width=1)
-        b = telebot.types.InlineKeyboardButton("Начать", callback_data="_start_bets_callback")
-        markup.add(b)
-        self.register_callback_query_handler(callback=self._start_bets_callback,
-                                             func=lambda query: query.data == "_start_bets_callback")
-
-        for u in self.users:
-            self.send_message(chat_id=u.telegram_id, text=text, reply_markup=markup)
 
     def _start_bets_callback(self, query) -> None:
         """
@@ -400,9 +344,6 @@ class BetBot(telebot.TeleBot):
 
     def send_test(self):
         self.notify_admin(f"{datetime.now().strftime(config.PREFERRED_DATETIME_FORMAT)}: CRON SCHEDULER IN PROGRESS")
-
-    def _create_contest(self):
-        self.notify_admin('Создание чемпионата...')
 
     def send_options(self):
         keyboard = telebot.types.InlineKeyboardMarkup()
