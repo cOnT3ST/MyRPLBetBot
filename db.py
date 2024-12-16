@@ -1,10 +1,14 @@
 import logging
 import time
 from os import path
+from pprint import pprint
 
 import mysql.connector
 from utils import get_from_env, init_logging
 from users import User
+from leagues import League
+from seasons import Season
+from bet_contests import BetContest
 
 DB_HOST = str(get_from_env("MYSQL_DB_HOST"))
 DB_LOGIN = str(get_from_env("MYSQL_DB_USERNAME"))
@@ -30,7 +34,8 @@ class Database:
             'seasons': {'create': 'create_seasons.sql'},
             'bet_contests': {'create': 'create_bet_contests.sql'},
             'matches': {'create': 'create_matches.sql'},
-            'bets': {'create': 'create_bets.sql'}
+            'bets': {'create': 'create_bets.sql'},
+            'bet_contest_users': {'create': 'create_bet_contest_users.sql'}
         }
         self._creation_order = ('api_requests', 'users', 'teams', 'leagues', 'seasons', 'bet_contests', 'matches',
                                 'bets')
@@ -228,8 +233,9 @@ class Database:
     @staticmethod
     def _gen_insert_query(table: str, data: dict) -> str:
         cols = tuple(data.keys())
+        cols_str = ', '.join(cols)
         pholders = ', '.join(["%s" for _ in cols])
-        q = f"INSERT INTO {table} ({', '.join(cols)}) VALUES ({pholders});"
+        q = f"INSERT INTO {table} ({cols_str}) VALUES ({pholders});"
         return q
 
     def _populate_users(self):
@@ -249,7 +255,7 @@ class Database:
 
         with self:
             self.cur.execute(admin_q, tuple(admin_data.values()))
-            self.cur.execute(test_q, tuple(test_user_data.values()))
+            #self.cur.execute(test_q, tuple(test_user_data.values()))
 
     def _populate_api_requests(self):
         """Populates 'api_requests' table with initial data."""
@@ -310,31 +316,139 @@ class Database:
 
     def insert_league(self, league_data: dict) -> None:
         query = Database._gen_insert_query('leagues', league_data)
-        with self:
-            self.cur.execute(query, tuple(league_data.values()))
+        try:
+            with self:
+                self.cur.execute(query, tuple(league_data.values()))
+            logging.info(f"New league inserted: {league_data}.")
+        except Exception as e:
+            logging.exception(f"An unexpected error occurred while inserting new league into table 'leagues':"
+                              f" {repr(e)}")
 
-    def _insert_season(self, season_data: dict) -> None:
-        query = Database._gen_insert_query('seasons', season_data)
+    def get_league_by_api_id(self, api_id: int) -> League | None:
+        q = f'SELECT * FROM leagues WHERE api_id = %s'
         with self:
-            self.cur.execute(query, tuple(season_data.values()))
+            self.cur.execute(q, (api_id,))
+            res = self.cur.fetchone()
+        if res:
+            res = League.from_db_dict(res)
+        return res
+
+    def get_league_by_country_and_name(self, country: str, name: str) -> League | None:
+        q = f'SELECT * FROM leagues WHERE league_country = %s AND league_name = %s'
+        with self:
+            self.cur.execute(q, (country, name))
+            res = self.cur.fetchone()
+        if res:
+            res = League.from_db_dict(res)
+        return res
+
+    def update_league(self, id: int, diff: dict) -> None:
+        set_clause = ', '.join([f'{k} = %s' for k in diff.keys()])
+        q = f"UPDATE leagues SET {set_clause} WHERE api_id = {id};"
+        new_values = tuple(diff.values())
+
+        try:
+            with self:
+                self.cur.execute(q, new_values)
+            logging.info(f"Table 'leagues', id {id} updated: {diff}.")
+        except Exception as e:
+            logging.exception(f"An unexpected error occurred while updating table 'leagues': {repr(e)}")
+
+    def insert_season(self, season_dict: dict) -> None:
+        query = Database._gen_insert_query('seasons', season_dict)
+        try:
+            with self:
+                self.cur.execute(query, tuple(season_dict.values()))
+            logging.info(f"New season inserted: {season_dict}.")
+        except Exception as e:
+            logging.exception(f"An unexpected error occurred while inserting new season into table 'seasons':"
+                              f" {repr(e)}")
+
+    def get_season_by_id(self, id: int) -> Season | None:
+        q = f'SELECT * FROM seasons WHERE id = %s'
+        with self:
+            self.cur.execute(q, (id,))
+            res = self.cur.fetchone()
+        if res:
+            league = self.get_league_by_api_id(res['league_api_id'])
+            res = Season.from_db_dict(league, res)
+        return res
+
+    def get_season_by_league_api_id_and_year(self, league_api_id: int, year: int) -> Season | None:
+        q = f'SELECT * FROM seasons WHERE league_api_id = %s and year = %s'
+        with self:
+            self.cur.execute(q, (league_api_id, year))
+            res = self.cur.fetchone()
+        if res:
+            league = self.get_league_by_api_id(league_api_id)
+            res = Season.from_db_dict(league, res)
+        return res
+
+    def get_seasons_by_league_api_id(self, league_api_id: int) -> list[Season] | None:
+        q = f'SELECT * FROM seasons WHERE league_api_id = %s'
+        with self:
+            self.cur.execute(q, (league_api_id,))
+            res = self.cur.fetchall()
+        if res:
+            league = self.get_league_by_api_id(league_api_id)
+            res = [Season.from_db_dict(league, s) for s in res]
+        return res
+
+    def get_last_stored_season(self, league_api_id: int) -> Season | None:
+        q = f'SELECT * FROM seasons WHERE league_api_id = %s ORDER BY year DESC'
+        with self:
+            self.cur.execute(q, (league_api_id,))
+            res = self.cur.fetchone()
+        if res:
+            league = self.get_league_by_api_id(league_api_id)
+            res = Season.from_db_dict(league, res)
+        return res
+
+    def update_season(self, id: int, diff: dict) -> None:
+        set_clause = ', '.join([f'{k} = %s' for k in diff.keys()])
+        q = f"UPDATE seasons SET {set_clause} WHERE id = {id};"
+        new_values = tuple(diff.values())
+        try:
+            with self:
+                self.cur.execute(q, new_values)
+            logging.info(f"Table 'seasons', id {id} updated: {diff}.")
+        except Exception as e:
+            logging.exception(f"An unexpected error occurred while updating table 'seasons': {repr(e)}")
+
+    def insert_bet_contest(self, bet_contest_dict: dict) -> int | None:
+        query = Database._gen_insert_query('bet_contests', bet_contest_dict)
+        try:
+            with self:
+                self.cur.execute(query, tuple(bet_contest_dict.values()))
+                bet_contest_id = self.cur.lastrowid
+            logging.info(f"New bet contest inserted: {bet_contest_dict}.")
+            return bet_contest_id
+        except Exception as e:
+            logging.exception(f"An unexpected error occurred while inserting new bet contest into table 'bet contests':"
+                              f" {repr(e)}")
+
+    def get_bet_contests(self, season_id: int) -> list[BetContest] | None:
+        q = f'SELECT * FROM bet_contests WHERE season_id = %s'
+        with self:
+            self.cur.execute(q, (season_id,))
+            res = self.cur.fetchall()
+        if res:
+            season = self.get_season_by_id(season_id)
+            res = [BetContest.from_db_dict(season, s) for s in res]
+        return res
+
+    def get_bet_contest_by_id(self, id: int) -> BetContest | None:
+        q = f'SELECT * FROM bet_contests WHERE id = %s'
+        with self:
+            self.cur.execute(q, (id,))
+            res = self.cur.fetchone()
+        if res:
+            season = self.get_season_by_id(res['season_id'])
+            res = BetContest.from_db_dict(season, res)
+        return res
 
 
 if __name__ == '__main__':
     db = Database()
-    # fetched_data = {
-    #     'league': {
-    #         'id': 235,
-    #         'logo_url': 'https://media.api-sports.io/football/leagues/235.png'
-    #     },
-    #     'season': {
-    #         'year': 2024,
-    #         'start_date': '2024-07-21',
-    #         'end_date': '2025-05-24',
-    #         'current': True
-    #     }
-    # }
-    # league_data = fetched_data['league']
-    # league_api_id = league_data['id']
-    # season_data = fetched_data['season']
-    # season_data.update({'league_api_id': 235})
-    # db._insert_season(season_data)
+    bc = db.get_bet_contest_by_id(1)
+    pprint(bc)

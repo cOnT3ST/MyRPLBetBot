@@ -48,7 +48,7 @@ class BetBot(telebot.TeleBot):
         """Attach the controller as the command handler."""
         self._command_handler = handler
 
-    def _forward_command(self, message):
+    def _forward_command(self, message) -> None:
         """Forward received commands to the controller."""
         if self._command_handler:
             self._command_handler.handle_command(message)

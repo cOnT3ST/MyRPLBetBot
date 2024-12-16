@@ -1,10 +1,10 @@
 CREATE TABLE `matches` (
     `api_id`    MEDIUMINT PRIMARY KEY,
-    `league_api_id`  INTEGER,
+    `league_api_id`  INTEGER NOT NULL,
     `start_datetime`    TIMESTAMP,
     `round`    TINYINT,
-    `home_team_id` SMALLINT,
-    `away_team_id` SMALLINT,
+    `home_team_id` SMALLINT NOT NULL,
+    `away_team_id` SMALLINT NOT NULL,
     `score`    TINYTEXT DEFAULT NULL,
     `status_long`    TINYTEXT DEFAULT NULL,
     `status_short`    TINYTEXT DEFAULT NULL,

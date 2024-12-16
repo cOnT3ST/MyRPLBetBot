@@ -60,7 +60,6 @@ class StatsAPIHandler:
             return
 
         # logging.info(f"Request successful.")
-        print('REQUEST SUCCESSFULL')
         response_json = response.json()
         return response_json
 
@@ -75,13 +74,12 @@ class StatsAPIHandler:
     def get_this_season_data(self, country: str, league: str) -> dict | None:
         """Returns data for this year season in the given championship of the given country fetched from Stats API."""
 
-        year = datetime.datetime.now().year
         response = self._make_request(
             endpoint='leagues',
             params={
                 'name': league,
-                'season': str(year),
-                'country': country
+                'country': country,
+                'current': 'true'
             }
         )
 
@@ -90,60 +88,6 @@ class StatsAPIHandler:
 
         valuable_data = response['response'][0]
         return valuable_data
-        # league_dict = valuable_data['league']
-        # season_dict = valuable_data['seasons'][0]
-        # "response": [{
-        #     "league": {
-        #         "id": 235,
-        #         "name": "Premier League",
-        #         "type": "League",
-        #         "logo": "https:\/\/media.api-sports.io\/football\/leagues\/235.png"
-        #     },
-        #     "country": {
-        #         "name": "Russia",
-        #         "code": "RU",
-        #         "flag": "https:\/\/media.api-sports.io\/flags\/ru.svg"
-        #     },
-        #     "seasons": [{
-        #         "year": 2024,
-        #         "start": "2024-07-21",
-        #         "end": "2025-05-24",
-        #         "current": true,
-        #         "coverage": {
-        #             "fixtures": {
-        #                 "events": true,
-        #                 "lineups": true,
-        #                 "statistics_fixtures": true,
-        #                 "statistics_players": true
-        #             },
-        #             "standings": true,
-        #             "players": true,
-        #             "top_scorers": true,
-        #             "top_assists": true,
-        #             "top_cards": true,
-        #             "injuries": true,
-        #             "predictions": true,
-        #             "odds": true
-        #         }
-        #     }
-        #     ]
-        # }
-        # ]
-        # season_data = {
-        #     'league':
-        #         {
-        #             'id': league_dict['id'],
-        #             'logo_url': league_dict['logo']
-        #         },
-        #     'season':
-        #         {
-        #             'year': season_dict['year'],
-        #             'start_date': season_dict['start'],
-        #             'end_date': season_dict['end'],
-        #             'current': season_dict['current']
-        #         }
-        # }
-        # return season_data
 
     def _get_league_teams(self, league_api_id: int, year: int) -> list:
         response = self._make_request(
@@ -166,4 +110,5 @@ if __name__ == '__main__':
     db = Database()
     s = StatsAPIHandler(db)
     season_data = s.get_this_season_data('Russia', 'Premier League')
+
     print(season_data)
