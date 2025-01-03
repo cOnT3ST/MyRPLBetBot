@@ -20,13 +20,7 @@ class BetBot(telebot.TeleBot):
         super().__init__(token=TELEGRAM_TOKEN, parse_mode='HTML')
         self.db = db
         self._active_sessions: dict[int: BetInputSession] | None = None
-        self._command_handler = None
-
-        self.commands = {
-            '/start': {'desc': 'Запуск бота.'},
-            '/help': {'desc': 'Вывод всех поддерживаемых ботом команд.'},
-            '/create_contest': {'desc': 'Создание соревнования по ставкам.'}
-        }
+        self._controller_command_handler = None
 
         self.register_message_handler(callback=self._handle_bet, func=self._filter_bet)
         self.register_message_handler(callback=self._handle_message, func=self._filter_message)
@@ -46,14 +40,14 @@ class BetBot(telebot.TeleBot):
 
     def set_command_handler(self, handler):
         """Attach the controller as the command handler."""
-        self._command_handler = handler
+        self._controller_command_handler = handler
 
-    def _forward_command(self, message) -> None:
+    def _forward_command_to_controller(self, message) -> None:
         """Forward received commands to the controller."""
-        if self._command_handler:
-            self._command_handler.handle_command(message)
+        if self._controller_command_handler:
+            self._controller_command_handler.handle_command(message)
         else:
-            self.send_message(message.chat.id, "Command handler not configured. Please contact the admin.")
+            self.reply_to(message, text=f"К сожалению, команда {message.text} пока не поддерживается 😪")
 
     def send_message(self, *args, **kwargs):
         chat_id = kwargs.get('chat_id', args[0] if args else None)
@@ -79,23 +73,17 @@ class BetBot(telebot.TeleBot):
     def _handle_message(self, message: telebot.types.Message) -> None:
         """
         Handles messages, which passed message filter by passing them to either a command or text handler.
-
         :param message: The incoming message object from a user.
         """
         text = message.text
         if text.startswith('/'):
-            if text in self.commands:
-                self._forward_command(message)
-                return
-            else:
-                self.reply_to(message=message, text="<b>Ой!</b>\n\n"
-                                                    "Вы ввели неподдерживаемую команду.\n"
-                                                    "Для вывода доступных команд введите /help.")
-                return
-        self._handle_text(message)
+            self._forward_command_to_controller(message)
+        else:
+            self._handle_text(message)
 
     def _handle_text(self, message) -> None:
         """A handler for text messages."""
+
         text = f"A message has been received\n" \
                f"Sender: {message.from_user.first_name} {message.from_user.last_name}\n" \
                f"Message type: {message.content_type}\n" \

@@ -282,7 +282,7 @@ class Database:
             res = User.from_dict(res)
         return res
 
-    def _get_admin(self) -> User | None:
+    def get_admin(self) -> User | None:
         query = 'SELECT * FROM users WHERE is_admin = True'
         with self:
             self.cur.execute(query)
@@ -450,5 +450,4 @@ class Database:
 
 if __name__ == '__main__':
     db = Database()
-    bc = db.get_bet_contest_by_id(1)
-    pprint(bc)
+

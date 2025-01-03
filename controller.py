@@ -1,8 +1,9 @@
 from pprint import pprint
 import logging
 from datetime import datetime
+import inspect
 
-from telebot.types import Message
+from telebot.types import Message, BotCommand, BotCommandScopeDefault, BotCommandScopeChat
 
 from db import Database
 from bot import BetBot
@@ -18,6 +19,7 @@ init_logging()
 
 
 class Controller:
+
     def __init__(
             self,
             telegram_bot: BetBot,
@@ -25,36 +27,78 @@ class Controller:
             scheduler: BotScheduler,
             stats_api_handler: StatsAPIHandler
     ):
-        self.bot = telegram_bot
-        self.db = database
-        self.sah = stats_api_handler
-        self.scheduler = scheduler
+        self.bot: BetBot = telegram_bot
+        self.db: Database = database
+        self.sah: StatsAPIHandler = stats_api_handler
+        self.scheduler: BotScheduler = scheduler
 
+        self._command_dict = {
+            'start': {'desc': 'Запуск бота', 'handler': self._handle_start, 'admin': False},
+            'help': {'desc': 'Вывод всех поддерживаемых ботом команд', 'handler': self._handle_help, 'admin': False},
+            'create_contest': {'desc': 'Создание соревнования по ставкам', 'handler': self._handle_create_contest,
+                               'admin': True},
+        }
         self.users: list[User] | None = None
+        self.admin: User | None = None
+
         self.bot.set_command_handler(self)
         self.bot.register_callback_query_handler(func=lambda query: query.data == "bon_appetit",
                                                  callback=self.handle_bon_appetit)
         self.bot.register_callback_query_handler(func=lambda query: query.data == "work_over",
                                                  callback=self.handle_work_over)
 
-        self._get_registered_users()
+        self._set_users_field()
+        self._set_admin_field()
 
-    def handle_command(self, message: Message):
-        command_map = {
-            '/start': self._handle_start,
-            '/help': self._handle_help,
-            '/create_contest': self._handle_create_contest
-        }
+        self._set_available_bot_commands()
 
-        command = message.text
-        handler = command_map.get(command)
+    def _set_available_bot_commands(self) -> None:
+        """Sets all available commands for telegram bot."""
 
+        admin_commands = [
+            BotCommand(command=c, description=self._command_dict.get(c).get('desc'))
+            for c in self._command_dict
+        ]
+        avg_user_commands = [
+            BotCommand(command=c, description=self._command_dict.get(c).get('desc'))
+            for c in self._command_dict if not self._command_dict.get(c).get('admin')
+        ]
+
+        self._delete_available_bot_commands()
+        for user in self.users:
+            self.bot.set_my_commands(avg_user_commands, scope=BotCommandScopeChat(user.telegram_id))
+        self.bot.set_my_commands(admin_commands, scope=BotCommandScopeChat(self.admin.telegram_id))
+
+    def _delete_available_bot_commands(self):
+        """Erases all available commands for telegram bot."""
+        for user in self.users:
+            self.bot.delete_my_commands(scope=BotCommandScopeChat(user.telegram_id))
+
+    def handle_command(self, message: Message) -> None:
+        """Handles commands sent via the telegram bot."""
+        command = message.text[1:]  # cut off / symbol
+
+        if command not in self._command_dict:
+            self.bot.reply_to(message=message, text="<b>Ой!</b>\n\n"
+                                                    "Вы ввели неподдерживаемую команду.\n\n"
+                                                    "Для вывода доступных команд введите /help.")
+            return
+
+        command_is_for_admins = self._command_dict.get(command).get('admin')
+        user = self._get_user(message.from_user.id)
+
+        if command_is_for_admins and not user.is_admin:
+            self.bot.reply_to(message=message, text="<b>Ой!</b>\n\n"
+                                                    "Вы ввели неподдерживаемую команду.\n\n"
+                                                    "Для вывода доступных команд введите /help.")
+            return
+
+        handler = self._command_dict.get(command).get('handler')
         if handler:
             handler(message)
         else:
-            self.bot.reply_to(message=message, text="<b>Ой!</b>\n\n"
-                                                    "Вы ввели неподдерживаемую команду.\n"
-                                                    "Для вывода доступных команд введите /help.")
+            self.bot.reply_to(message=message, text=f"<b>Ой!</b>\n\n "
+                                                    f"К сожалению, команда /{command} пока не поддерживается 😪")
 
     def _handle_create_contest(self, message):
         """A handler func for the '/create_contest' telegram bot command."""
@@ -91,7 +135,6 @@ class Controller:
             logging.info(f"Bet contest creation aborted: '{stored_season.league.league_country}, "
                          f"{stored_season.league.league_name}, season {stored_season.year}-{stored_season.end_year}' "
                          f"already stored.")
-
 
     def _get_season(self, league_api_id: int) -> Season | None:
         stored_season = self.db.get_last_stored_season(league_api_id)
@@ -206,12 +249,20 @@ class Controller:
     def _handle_start(self, message: Message) -> None:
         """A handler func for the '/start' telegram bot command."""
         self._ensure_user_registration(message)
-        self._get_registered_users()
+        self._set_users_field()
         self.bot.reply_to(message, 'К сожалению, команда /start пока не поддерживается 😪')
 
     def _handle_help(self, message: Message) -> None:
         """A handler func for the '/help' telegram bot command."""
-        comms_n_descs = [f"{c} - {d['desc']}" for c, d in self.bot.commands.items()]
+        user = self._get_user(message.from_user.id)
+
+        if user.is_admin:
+            scope = BotCommandScopeChat(user.telegram_id)
+        else:
+            scope = BotCommandScopeDefault()
+
+        commands = [c for c in self.bot.get_my_commands(scope=scope)]
+        comms_n_descs = [f"/{c.command} - {c.description}" for c in commands]
         comms_n_descs = f'\n\n'.join(comms_n_descs)
         self.bot.reply_to(message, f"Список поддерживаемых ботом команд:\n\n"
                                    f"{comms_n_descs}")
@@ -240,11 +291,18 @@ class Controller:
         if not new_user:
             self.db.register_user(telegram_id)
 
-    def _get_registered_users(self) -> None:
+    def _set_users_field(self) -> None:
         """Fetches and updates the self.users field with a list of registered users from the database."""
         self.users = self.db.get_users()
+
+    def _set_admin_field(self) -> None:
+        """Fetches and updates the self.admin field with a user obj set as admin from the database."""
+        self.admin = self.db.get_admin()
 
     def _suggest_bet_contest(self):
         self.bot.notify_admin('Соревнование для текущего сезона уже есть в базе данных!')
         print("_suggest_bet_contest run. Method hasn't been implemented yet")
         pass
+
+    def _get_user(self, tg_id):
+        return self.db.get_user(tg_id)
