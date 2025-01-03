@@ -1,8 +1,8 @@
 CREATE TABLE `users` (
     `id`    INTEGER PRIMARY KEY AUTO_INCREMENT,
-    `first_name`    TEXT DEFAULT NULL,
-    `last_name` TEXT DEFAULT NULL,
     `telegram_id`   BIGINT NOT NULL UNIQUE,
+    `first_name`    TINYTEXT DEFAULT NULL,
+    `last_name` TINYTEXT DEFAULT NULL,
     `is_admin`  BOOL DEFAULT FALSE,
     `used_bot`   BOOL DEFAULT FALSE,
     `blocked_bot`   BOOL DEFAULT FALSE,
